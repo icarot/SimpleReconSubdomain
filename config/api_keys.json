@@ -1,0 +1,11 @@
+{
+
+    "alienvault_otx":    "",
+    "hackertarget":      "",
+    "urlscan":           "",
+    "virustotal":        "",
+    "securitytrails":    "",
+    "shodan":            "",
+    "github_token":      "",
+    "censys_token":      ""
+}
