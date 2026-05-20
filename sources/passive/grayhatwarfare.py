@@ -17,7 +17,7 @@ _CLOUD_SUFFIXES = re.compile(
 )
 
 
-class AWSBucket(BaseSource):
+class GrayHatWarfare(BaseSource):
     """
     Searches GrayHatWarfare (V2 API) for public cloud buckets whose name
     matches the target domain keyword.
@@ -31,7 +31,7 @@ class AWSBucket(BaseSource):
     without one every request returns 0 results.
     """
 
-    NAME = 'awsbucket'
+    NAME = 'grayhatwarfare'
     REQUIRES_API_KEY = True
 
     _BASE_URL = 'https://buckets.grayhatwarfare.com/api/v2/buckets'

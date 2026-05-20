@@ -271,7 +271,7 @@ python simplerecon.py --list-sources
 | `securitytrails` | Required | DNS history |
 | `censys` | Required | Certificate search |
 | `shodan` | Required | DNS domain lookup |
-| `awsbucket` | Required | GrayHatWarfare — public cloud buckets (AWS/Azure/GCP) |
+| `grayhatwarfare` | Required | GrayHatWarfare — public cloud buckets (AWS/Azure/GCP) |
 | `leakix` | Optional | LeakIX — exposed services and cloud assets |
 | `fullhunt` | Required | FullHunt — full internet host & subdomain index |
 | `zone_transfer` | No | Active: AXFR attempt |

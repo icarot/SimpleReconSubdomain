@@ -19,7 +19,7 @@ from sources.passive.virustotal import VirusTotal
 from sources.passive.securitytrails import SecurityTrails
 from sources.passive.censys import Censys
 from sources.passive.shodan import Shodan
-from sources.passive.awsbucket import AWSBucket
+from sources.passive.grayhatwarfare import GrayHatWarfare
 from sources.passive.leakix import LeakIX
 from sources.passive.fullhunt import FullHunt
 from sources.active.zone_transfer import ZoneTransfer
@@ -45,7 +45,7 @@ ALL_PASSIVE_SOURCES: dict = {
     'securitytrails':  SecurityTrails,   # requer API key
     'censys':          Censys,           # requer API key (censys_api_id + censys_api_secret)
     'shodan':          Shodan,           # requer API key
-    'awsbucket':       AWSBucket,        # GrayHatWarfare S3 buckets  [API key opcional]
+    'grayhatwarfare':   GrayHatWarfare,   # GrayHatWarfare S3 buckets  [API key obrigatória]
     'leakix':          LeakIX,           # LeakIX cloud/Azure asset index  [API key opcional]
     'fullhunt':        FullHunt,         # FullHunt host index  [API key obrigatória]
 }
