@@ -19,6 +19,9 @@ from sources.passive.virustotal import VirusTotal
 from sources.passive.securitytrails import SecurityTrails
 from sources.passive.censys import Censys
 from sources.passive.shodan import Shodan
+from sources.passive.awsbucket import AWSBucket
+from sources.passive.leakix import LeakIX
+from sources.passive.fullhunt import FullHunt
 from sources.active.zone_transfer import ZoneTransfer
 from sources.active.dns_mining import DNSMining
 from output.formatter import save_output
@@ -42,6 +45,9 @@ ALL_PASSIVE_SOURCES: dict = {
     'securitytrails':  SecurityTrails,   # requer API key
     'censys':          Censys,           # requer API key (censys_api_id + censys_api_secret)
     'shodan':          Shodan,           # requer API key
+    'awsbucket':       AWSBucket,        # GrayHatWarfare S3 buckets  [API key opcional]
+    'leakix':          LeakIX,           # LeakIX cloud/Azure asset index  [API key opcional]
+    'fullhunt':        FullHunt,         # FullHunt host index  [API key obrigatória]
 }
 
 ALL_ACTIVE_SOURCES: dict = {
@@ -141,9 +147,9 @@ class Engine:
             if new_items:
                 self.log(f'[*] [{name}] +{len(new_items)} subdomains')
             else:
-                self.vlog(f'  [{name}] 0 new subdomains')
+                self.vlog(f'[!] [{name}] 0 new subdomains')
         except Exception as exc:
-            self.vlog(f'  [{name}] error: {exc}')
+            self.vlog(f'[x] [{name}] error: {exc}')
             source_counts[name] = 0
 
     # ------------------------------------------------------------------

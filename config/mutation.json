@@ -1,0 +1,45 @@
+{
+  "mutations": [
+    "dev", "develop", "development", "staging", "stage",
+    "prod", "production", "test", "testing", "qa", "uat",
+    "sandbox", "demo", "preview", "pre", "preprod",
+
+    "old", "new", "v1", "v2", "v3", "v4", "beta", "alpha",
+    "release", "legacy", "next", "latest",
+
+    "api", "api2", "rest", "graphql", "grpc", "ws", "websocket",
+    "admin", "administrator", "manage", "management", "manager",
+    "dashboard", "panel", "console", "control", "cp",
+    "internal", "intranet", "corp", "corporate", "private",
+    "backup", "bak", "archive",
+
+    "vpn", "gateway", "proxy", "lb", "load", "ns", "ns1", "ns2",
+    "dns", "ntp", "monitor", "monitoring", "status", "health",
+    "ssh", "bastion", "jump",
+
+    "mail", "email", "smtp", "pop", "pop3", "imap", "mx",
+    "webmail", "autoconfig", "autodiscover",
+
+    "ftp", "sftp", "files", "file", "upload", "uploads",
+    "s3", "storage", "store", "bucket",
+
+    "www", "web", "app", "apps", "mobile", "m",
+    "portal", "login", "auth", "sso", "oauth",
+    "secure", "ssl", "shop", "checkout",
+
+    "static", "assets", "cdn", "media", "img", "images",
+    "video", "videos", "audio", "docs", "download", "downloads",
+
+    "git", "gitlab", "github", "bitbucket", "svn",
+    "ci", "cd", "jenkins", "build", "deploy",
+    "docker", "registry", "k8s", "kubernetes", "helm",
+
+    "db", "database", "mysql", "postgres", "redis", "mongo",
+    "elastic", "kibana", "grafana", "prometheus", "influx",
+    "analytics", "metrics", "log", "logs", "logging",
+
+    "help", "support", "helpdesk", "ticket", "jira", "confluence",
+    "wiki", "kb", "forum", "community", "blog",
+    "crm", "erp", "hr", "finance", "billing", "pay", "payment"
+  ]
+}

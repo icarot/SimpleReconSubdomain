@@ -13,6 +13,8 @@ class AlienVault(BaseSource):
         subdomains: set[str] = set()
         headers = {}
         api_key = get_key('alienvault_otx')
+        self.timeout = 30
+        
         if api_key:
             headers['X-OTX-API-KEY'] = api_key
 

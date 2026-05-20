@@ -1,10 +1,9 @@
-MUTATIONS = [
-    'dev', 'staging', 'prod', 'test', 'api', 'admin',
-    'internal', 'old', 'new', 'v1', 'v2', 'beta',
-    'backup', 'corp', 'vpn', 'mail', 'smtp', 'ftp',
-    'www', 'app', 'mobile', 'portal', 'login', 'secure',
-    'static', 'cdn', 'media', 'img', 'images', 'assets',
-]
+import json
+from pathlib import Path
+
+_MUTATION_FILE = Path(__file__).parent.parent / 'config' / 'mutation.json'
+
+MUTATIONS: list[str] = json.loads(_MUTATION_FILE.read_text())['mutations']
 
 
 def generate_permutations(subdomains: set[str], domain: str) -> set[str]:

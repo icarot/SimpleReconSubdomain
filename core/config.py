@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-_CONFIG_FILE = Path(__file__).parent.parent / 'config' / 'api_keys.json'
+_CONFIG_FILE = Path(__file__).parent.parent / 'config' / 'dev_api_keys.json'
 
 _cache: dict | None = None
 

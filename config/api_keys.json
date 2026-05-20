@@ -1,11 +1,14 @@
 {
 
-    "alienvault_otx":    "",
-    "hackertarget":      "",
-    "urlscan":           "",
-    "virustotal":        "",
-    "securitytrails":    "",
-    "shodan":            "",
-    "github_token":      "",
-    "censys_token":      ""
+    "alienvault_otx":       "",
+    "hackertarget":         "",
+    "urlscan":              "",
+    "virustotal":           "",
+    "securitytrails":       "",
+    "shodan":               "",
+    "github_token":         "",
+    "censys_token":         "",
+    "grayhatwarfare_token": "",
+    "leakix_token":         "",
+    "fullhunt_token":       ""
 }

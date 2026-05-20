@@ -13,7 +13,7 @@
 Developed to facilitate domain enumeration with minimal effort, whether using third-party APIs or DNS queries.
 
 - Passive and active subdomain enumeration tool for OSINT and reconnaissance workflows.
-Built with async Python - queries up to 14 sources in parallel with no external dependencies like `curl` or `jq`.
+Built with async Python - queries up to 17 sources in parallel with no external dependencies like `curl` or `jq`.
 
 
 
@@ -74,18 +74,21 @@ pip install -r requirements.txt
 ## API Keys
 
 API keys are stored in a single JSON file: `config/api_keys.json`.
-This file is excluded from git (`.gitignore`) to prevent credential leaks.
+I recommend this file is excluded from git (`.gitignore`) to prevent credential leaks.
 
 ```json
 {
-    "alienvault_otx":  "",
-    "hackertarget":    "",
-    "urlscan":         "",
-    "virustotal":      "",
-    "securitytrails":  "",
-    "shodan":          "",
-    "github_token":    "",
-    "censys_token":    ""
+    "alienvault_otx":        "",
+    "hackertarget":          "",
+    "urlscan":               "",
+    "virustotal":            "",
+    "securitytrails":        "",
+    "shodan":                "",
+    "github_token":          "",
+    "censys_token":          "",
+    "grayhatwarfare_token":  "",
+    "leakix_token":          "",
+    "fullhunt_token":        ""
 }
 ```
 
@@ -103,6 +106,9 @@ Fill in the keys you have. Sources with empty keys still run if they support una
 | `shodan` | https://account.shodan.io |
 | `censys_token` | https://search.censys.io/account/api → Personal Access Tokens |
 | `github_token` | https://github.com/settings/tokens (scope: `public_repo`) |
+| `grayhatwarfare_token` | https://grayhatwarfare.com/account |
+| `leakix_token` | https://leakix.net/login → API Keys |
+| `fullhunt_token` | https://fullhunt.io/user/api |
 
 ---
 
@@ -265,6 +271,9 @@ python simplerecon.py --list-sources
 | `securitytrails` | Required | DNS history |
 | `censys` | Required | Certificate search |
 | `shodan` | Required | DNS domain lookup |
+| `awsbucket` | Required | GrayHatWarfare — public cloud buckets (AWS/Azure/GCP) |
+| `leakix` | Optional | LeakIX — exposed services and cloud assets |
+| `fullhunt` | Required | FullHunt — full internet host & subdomain index |
 | `zone_transfer` | No | Active: AXFR attempt |
 | `dns_mining` | No | Active: SPF/MX/DMARC records |
 

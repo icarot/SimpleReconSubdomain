@@ -7,6 +7,9 @@ ALL_PASSIVE = [
     'alienvault', 'bufferover',
     'virustotal', 'securitytrails',  # requerem API key (config/api_keys.json)
     'censys', 'shodan',              # requerem API key (config/api_keys.json)
+    'awsbucket',                     # API key obrigatória (grayhatwarfare_token)
+    'leakix',                        # API key opcional  (leakix_token)
+    'fullhunt',                      # API key obrigatória (fullhunt_token)
 ]
 
 ALL_ACTIVE = ['zone_transfer', 'dns_mining']
@@ -188,6 +191,9 @@ def print_sources() -> None:
         ('securitytrails',  'SecurityTrails DNS history  [API key obrigatória]'),
         ('censys',          'Censys certificate search  [API key obrigatória]'),
         ('shodan',          'Shodan DNS domain  [API key obrigatória]'),
+        ('awsbucket',       'GrayHatWarfare cloud buckets  [API key obrigatória]'),
+        ('leakix',          'LeakIX cloud/Azure asset index  [API key opcional]'),
+        ('fullhunt',        'FullHunt host & subdomain index  [API key obrigatória]'),
     ]
     active_info = [
         ('zone_transfer', 'DNS Zone Transfer (AXFR) - all nameservers'),

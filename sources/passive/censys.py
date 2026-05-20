@@ -16,6 +16,7 @@ class Censys(BaseSource):
 
         subdomains: set[str] = set()
         headers = {'Authorization': f'Bearer {token}'}
+        self.timeout = 30
         params: dict = {
             'q': f'parsed.names: %.{domain}',
             'fields': 'parsed.names',
