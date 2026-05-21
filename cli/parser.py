@@ -1,18 +1,10 @@
 import argparse
 
-# All source names recognized by the engine
-ALL_PASSIVE = [
-    'rapiddns', 'jldc', 'crtsh', 'certspotter',
-    'urlscan', 'hackertarget', 'wayback', 'robtex',
-    'alienvault', 'bufferover',
-    'virustotal', 'securitytrails',  # requerem API key (config/api_keys.json)
-    'censys', 'shodan',              # requerem API key (config/api_keys.json)
-    'grayhatwarfare',                    # API key obrigatória (grayhatwarfare_token)
-    'leakix',                        # API key opcional  (leakix_token)
-    'fullhunt',                      # API key obrigatória (fullhunt_token)
-]
+from sources import PASSIVE_SOURCES, ACTIVE_SOURCES
 
-ALL_ACTIVE = ['zone_transfer', 'dns_mining']
+# Built dynamically from the auto-discovered source modules
+ALL_PASSIVE = list(PASSIVE_SOURCES)
+ALL_ACTIVE  = list(ACTIVE_SOURCES)
 ALL_SOURCES = ALL_PASSIVE + ALL_ACTIVE
 
 
@@ -155,7 +147,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # Verbosity
-    parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
+    parser.add_argument(
+        '-v', '--verbose',
+        nargs='?', const=1, type=int, default=0,
+        metavar='LEVEL',
+        help='Verbose level (cumulativo): 1=zero results, 2=+HTTP codes, 3=+HTTP body, 4=full debug+exceptions',
+    )
     parser.add_argument(
         '-q', '--quiet', action='store_true', help='Quiet mode (results only)'
     )
@@ -176,40 +173,18 @@ def build_parser() -> argparse.ArgumentParser:
 def print_sources() -> None:
     import core.colors as C
 
-    passive_info = [
-        ('rapiddns',        'RapidDNS dataset'),
-        ('jldc',            'Anubis / JLDC subdomain DB'),
-        ('crtsh',           'Certificate Transparency - crt.sh'),
-        ('certspotter',     'Certificate Transparency - CertSpotter'),
-        ('urlscan',         'URLScan.io  [API key opcional]'),
-        ('hackertarget',    'HackerTarget host search  [API key opcional]'),
-        ('wayback',         'Wayback Machine (web.archive.org)'),
-        ('robtex',          'Robtex passive DNS'),
-        ('alienvault',      'AlienVault OTX  [API key opcional]'),
-        ('bufferover',      'BufferOver (Rapid7 FDNS via TLS)'),
-        ('virustotal',      'VirusTotal subdomains  [API key obrigatória]'),
-        ('securitytrails',  'SecurityTrails DNS history  [API key obrigatória]'),
-        ('censys',          'Censys certificate search  [API key obrigatória]'),
-        ('shodan',          'Shodan DNS domain  [API key obrigatória]'),
-        ('grayhatwarfare',   'GrayHatWarfare cloud buckets  [API key obrigatória]'),
-        ('leakix',          'LeakIX cloud/Azure asset index  [API key opcional]'),
-        ('fullhunt',        'FullHunt host & subdomain index  [API key obrigatória]'),
-    ]
-    active_info = [
-        ('zone_transfer', 'DNS Zone Transfer (AXFR) - all nameservers'),
-        ('dns_mining',    'SPF / DMARC / MX record mining'),
-    ]
-
-    def _fmt_desc(desc: str) -> str:
-        desc = desc.replace('[API key opcional]',    C.yellow('[API key opcional]'))
-        desc = desc.replace('[API key obrigatória]', C.red('[API key obrigatória]'))
-        return desc
+    def _key_badge(cls) -> str:
+        if cls.API_TOKEN_IS_REQUIREMENT:
+            return C.red('[API key obrigatória]')
+        return ''
 
     print(f'\n{C.bold(C.white("Available sources:"))}\n')
-    print(f'  {C.bold(C.cyan("PASSIVE"))} ')  
-    for name, desc in passive_info:
-        print(f'    {C.cyan(f"{name:<16}")} {_fmt_desc(desc)}')
-    print(f'\n  {C.bold(C.cyan("ACTIVE"))} {C.gray("(DNS-based):")}')  
-    for name, desc in active_info:
-        print(f'    {C.cyan(f"{name:<16}")} {desc}')
+    print(f'  {C.bold(C.cyan("PASSIVE"))} ')
+    for cls in PASSIVE_SOURCES.values():
+        badge = _key_badge(cls)
+        suffix = f'  {badge}' if badge else ''
+        print(f'    {C.cyan(f"{cls.NAME:<16}")} {cls.DESCRIPTION}{suffix}')
+    print(f'\n  {C.bold(C.cyan("ACTIVE"))} {C.gray("(DNS-based):")}')
+    for cls in ACTIVE_SOURCES.values():
+        print(f'    {C.cyan(f"{cls.NAME:<16}")} {cls.DESCRIPTION}')
     print()

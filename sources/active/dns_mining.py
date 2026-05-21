@@ -5,6 +5,8 @@ from sources.base import BaseSource
 
 class DNSMining(BaseSource):
     NAME = 'dns_mining'
+    DESCRIPTION = 'SPF / DMARC / MX record mining'
+    API_TOKEN_IS_REQUIREMENT = False
 
     async def fetch(self, domain: str) -> set[str]:
         loop = asyncio.get_event_loop()

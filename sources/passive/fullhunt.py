@@ -16,7 +16,8 @@ class FullHunt(BaseSource):
     """
 
     NAME = 'fullhunt'
-    REQUIRES_API_KEY = True
+    DESCRIPTION = 'FullHunt host & subdomain index'
+    API_TOKEN_IS_REQUIREMENT = True
 
     async def fetch(self, domain: str) -> set[str]:
         token = get_key('fullhunt_token')
@@ -31,7 +32,7 @@ class FullHunt(BaseSource):
             async with httpx.AsyncClient(
                 timeout=self.timeout, follow_redirects=True, headers=headers
             ) as client:
-                resp = await client.get(url)
+                resp = await self._get(client, url)
                 if resp.status_code != 200:
                     return subdomains
 
@@ -47,7 +48,7 @@ class FullHunt(BaseSource):
                     if host:
                         subdomains.add(host)
 
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_exc(e)
 
         return self._filter(subdomains, domain)

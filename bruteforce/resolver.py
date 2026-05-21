@@ -20,7 +20,7 @@ async def dns_bruteforce(
     resolvers: Optional[list[str]] = None,
     concurrency: int = 200,
     record_types: Optional[list[str]] = None,
-    verbose: bool = False,
+    verbose: int = 0,
     quiet: bool = False,
     wildcard: bool = False,
     wildcard_ips: Optional[set[str]] = None,
@@ -83,7 +83,7 @@ async def dns_bruteforce(
                         if resolved.issubset(wildcard_ips):
                             return
                     found.add(subdomain)
-                    if verbose and not quiet:
+                    if verbose >= 1 and not quiet:
                         print(f'  [+] {subdomain} ({rtype})')
                     return
                 except aiodns.error.DNSError:

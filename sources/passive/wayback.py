@@ -4,6 +4,8 @@ from sources.base import BaseSource
 
 class Wayback(BaseSource):
     NAME = 'wayback'
+    DESCRIPTION = 'Wayback Machine (web.archive.org)'
+    API_TOKEN_IS_REQUIREMENT = False
 
     async def fetch(self, domain: str) -> set[str]:
         url = (
@@ -16,7 +18,7 @@ class Wayback(BaseSource):
         self.timeout = 50.0  # Wayback can be slow to respond, increase timeout
         try:
             async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
-                resp = await client.get(url)
+                resp = await self._get(client, url)
                 if resp.status_code != 200:
                     return subdomains
                 for line in resp.text.splitlines():
@@ -26,5 +28,5 @@ class Wayback(BaseSource):
                         host = line.split('://')[1].split('/')[0].split(':')[0]
                         subdomains.add(host)
         except Exception as e:
-            print(f'[!] Error fetching Wayback data for {domain}: {e}')
+            self._log_exc(e)
         return self._filter(subdomains, domain)

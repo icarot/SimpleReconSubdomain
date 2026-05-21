@@ -7,7 +7,8 @@
     "securitytrails":       "",
     "shodan":               "",
     "github_token":         "",
-    "censys_token":         "",
+    "censys_id":            "",
+    "censys_secret":        "",
     "grayhatwarfare_token": "",
     "leakix_token":         "",
     "fullhunt_token":       ""

@@ -5,55 +5,15 @@ from argparse import Namespace
 
 import core.colors as colors
 from core.dedup import DeduplicatedSet
-from sources.passive.rapiddns import RapidDNS
-from sources.passive.jldc import JLDC
-from sources.passive.crtsh import CrtSh
-from sources.passive.certspotter import CertSpotter
-from sources.passive.urlscan import URLScan
-from sources.passive.hackertarget import HackerTarget
-from sources.passive.wayback import Wayback
-from sources.passive.robtex import Robtex
-from sources.passive.alienvault import AlienVault
-from sources.passive.bufferover import BufferOver
-from sources.passive.virustotal import VirusTotal
-from sources.passive.securitytrails import SecurityTrails
-from sources.passive.censys import Censys
-from sources.passive.shodan import Shodan
-from sources.passive.grayhatwarfare import GrayHatWarfare
-from sources.passive.leakix import LeakIX
-from sources.passive.fullhunt import FullHunt
-from sources.active.zone_transfer import ZoneTransfer
-from sources.active.dns_mining import DNSMining
+from sources import PASSIVE_SOURCES, ACTIVE_SOURCES
 from output.formatter import save_output
 
 DOMAIN_PATTERN = re.compile(
     r'^(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
 )
 
-ALL_PASSIVE_SOURCES: dict = {
-    'rapiddns':     RapidDNS,
-    'jldc':         JLDC,
-    'crtsh':        CrtSh,
-    'certspotter':  CertSpotter,
-    'urlscan':      URLScan,
-    'hackertarget': HackerTarget,
-    'wayback':      Wayback,
-    'robtex':       Robtex,
-    'alienvault':      AlienVault,
-    'bufferover':      BufferOver,
-    'virustotal':      VirusTotal,       # requer API key
-    'securitytrails':  SecurityTrails,   # requer API key
-    'censys':          Censys,           # requer API key (censys_api_id + censys_api_secret)
-    'shodan':          Shodan,           # requer API key
-    'grayhatwarfare':   GrayHatWarfare,   # GrayHatWarfare S3 buckets  [API key obrigatória]
-    'leakix':          LeakIX,           # LeakIX cloud/Azure asset index  [API key opcional]
-    'fullhunt':        FullHunt,         # FullHunt host index  [API key obrigatória]
-}
-
-ALL_ACTIVE_SOURCES: dict = {
-    'zone_transfer': ZoneTransfer,
-    'dns_mining':    DNSMining,
-}
+ALL_PASSIVE_SOURCES: dict = PASSIVE_SOURCES
+ALL_ACTIVE_SOURCES: dict  = ACTIVE_SOURCES
 
 
 def load_targets(domain: str | None = None, list_file: str | None = None) -> list[str]:
@@ -100,7 +60,7 @@ def load_resolvers(resolvers_file: str) -> list[str]:
 class Engine:
     def __init__(self, args: Namespace) -> None:
         self.args = args
-        self.verbose: bool = getattr(args, 'verbose', False)
+        self.verbose: int = getattr(args, 'verbose', 0) or 0
         self.quiet: bool = getattr(args, 'quiet', False)
 
     # ------------------------------------------------------------------
@@ -111,8 +71,8 @@ class Engine:
         if not self.quiet:
             print(colors.format_msg(msg))
 
-    def vlog(self, msg: str) -> None:
-        if self.verbose and not self.quiet:
+    def vlog(self, level: int, msg: str) -> None:
+        if self.verbose >= level and not self.quiet:
             print(colors.format_msg(msg))
 
     # ------------------------------------------------------------------
@@ -147,9 +107,9 @@ class Engine:
             if new_items:
                 self.log(f'[*] [{name}] +{len(new_items)} subdomains')
             else:
-                self.vlog(f'[!] [{name}] 0 new subdomains')
+                self.vlog(1, f'[!] [{name}] 0 new subdomains')
         except Exception as exc:
-            self.vlog(f'[x] [{name}] error: {exc}')
+            self.vlog(1, f'[x] [{name}] error: {exc}')
             source_counts[name] = 0
 
     # ------------------------------------------------------------------
@@ -169,7 +129,7 @@ class Engine:
         if not self.args.no_passive:
             self.log('[*] Running passive sources...')
             tasks = [
-                self._run_source(name, cls(timeout=self.args.timeout), target, dedup, source_counts)
+                self._run_source(name, cls(timeout=self.args.timeout, verbose=self.verbose), target, dedup, source_counts)
                 for name, cls in passive_sources.items()
             ]
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -179,7 +139,7 @@ class Engine:
             self.log('[*] Running active sources...')
             for name, cls in active_sources.items():
                 await self._run_source(
-                    name, cls(timeout=self.args.timeout), target, dedup, source_counts
+                    name, cls(timeout=self.args.timeout, verbose=self.verbose), target, dedup, source_counts
                 )
 
         # ── DNS brute-force ───────────────────────────────────────────

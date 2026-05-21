@@ -5,17 +5,18 @@ from core.config import get_key
 
 class Censys(BaseSource):
     NAME = 'censys'
-    REQUIRES_API_KEY = True
+    DESCRIPTION = 'Censys certificate search'
+    API_TOKEN_IS_REQUIREMENT = True
 
     _SEARCH_URL = 'https://search.censys.io/api/v2/certificates/search'
 
     async def fetch(self, domain: str) -> set[str]:
-        token = get_key('censys_token')
-        if not token:
+        api_id = get_key('censys_id')
+        api_secret = get_key('censys_secret')
+        if not api_id or not api_secret:
             return set()
 
         subdomains: set[str] = set()
-        headers = {'Authorization': f'Bearer {token}'}
         self.timeout = 30
         params: dict = {
             'q': f'parsed.names: %.{domain}',
@@ -25,10 +26,11 @@ class Censys(BaseSource):
 
         try:
             async with httpx.AsyncClient(
-                timeout=self.timeout, follow_redirects=True, headers=headers
+                timeout=self.timeout, follow_redirects=True, auth=(api_id, api_secret)
             ) as client:
                 while True:
-                    resp = await client.get(
+                    resp = await self._get(
+                        client,
                         self._SEARCH_URL,
                         params=params,
                     )
@@ -46,7 +48,7 @@ class Censys(BaseSource):
                     if not cursor:
                         break
                     params['cursor'] = cursor
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_exc(e)
 
         return self._filter(subdomains, domain)

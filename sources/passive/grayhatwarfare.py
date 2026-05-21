@@ -32,7 +32,8 @@ class GrayHatWarfare(BaseSource):
     """
 
     NAME = 'grayhatwarfare'
-    REQUIRES_API_KEY = True
+    DESCRIPTION = 'GrayHatWarfare cloud buckets'
+    API_TOKEN_IS_REQUIREMENT = True
 
     _BASE_URL = 'https://buckets.grayhatwarfare.com/api/v2/buckets'
 
@@ -49,7 +50,7 @@ class GrayHatWarfare(BaseSource):
             async with httpx.AsyncClient(
                 timeout=self.timeout, follow_redirects=True, headers=headers
             ) as client:
-                resp = await client.get(self._BASE_URL, params=params)
+                resp = await self._get(client, self._BASE_URL, params=params)
 
                 if resp.status_code != 200:
                     return subdomains
@@ -65,7 +66,7 @@ class GrayHatWarfare(BaseSource):
                     subdomains.add(candidate)
                     subdomains.add(hostname)
 
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_exc(e)
 
         return self._filter(subdomains, domain)

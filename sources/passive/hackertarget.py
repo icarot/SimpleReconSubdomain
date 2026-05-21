@@ -5,6 +5,8 @@ from core.config import get_key
 
 class HackerTarget(BaseSource):
     NAME = 'hackertarget'
+    DESCRIPTION = 'HackerTarget host search'
+    API_TOKEN_IS_REQUIREMENT = False
 
     async def fetch(self, domain: str) -> set[str]:
         params: dict = {'q': domain}
@@ -15,13 +17,13 @@ class HackerTarget(BaseSource):
         subdomains: set[str] = set()
         try:
             async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
-                resp = await client.get('https://api.hackertarget.com/hostsearch/', params=params)
+                resp = await self._get(client, 'https://api.hackertarget.com/hostsearch/', params=params)
                 if resp.status_code != 200:
                     return subdomains
                 for line in resp.text.splitlines():
                     parts = line.split(',')
                     if parts:
                         subdomains.add(parts[0].strip())
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_exc(e)
         return self._filter(subdomains, domain)

@@ -4,6 +4,8 @@ from sources.base import BaseSource
 
 class ZoneTransfer(BaseSource):
     NAME = 'zone_transfer'
+    DESCRIPTION = 'DNS Zone Transfer (AXFR)'
+    API_TOKEN_IS_REQUIREMENT = False
 
     async def fetch(self, domain: str) -> set[str]:
         loop = asyncio.get_event_loop()

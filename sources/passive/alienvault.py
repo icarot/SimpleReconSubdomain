@@ -5,6 +5,8 @@ from core.config import get_key
 
 class AlienVault(BaseSource):
     NAME = 'alienvault'
+    DESCRIPTION = 'AlienVault OTX passive DNS'
+    API_TOKEN_IS_REQUIREMENT = False
 
     async def fetch(self, domain: str) -> set[str]:
         url = (
@@ -22,13 +24,13 @@ class AlienVault(BaseSource):
             async with httpx.AsyncClient(
                 timeout=self.timeout, follow_redirects=True, headers=headers
             ) as client:
-                resp = await client.get(url)
+                resp = await self._get(client, url)
                 if resp.status_code != 200:
                     return subdomains
                 for entry in resp.json().get('passive_dns', []):
                     hostname = entry.get('hostname', '')
                     if hostname:
                         subdomains.add(hostname)
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_exc(e)
         return self._filter(subdomains, domain)

@@ -17,7 +17,8 @@ class LeakIX(BaseSource):
     """
 
     NAME = 'leakix'
-    REQUIRES_API_KEY = False
+    DESCRIPTION = 'LeakIX cloud/Azure asset index'
+    API_TOKEN_IS_REQUIREMENT = False
 
     async def fetch(self, domain: str) -> set[str]:
         token = get_key('leakix_token')
@@ -32,7 +33,7 @@ class LeakIX(BaseSource):
             async with httpx.AsyncClient(
                 timeout=self.timeout, follow_redirects=True, headers=headers
             ) as client:
-                resp = await client.get(url)
+                resp = await self._get(client, url)
                 if resp.status_code != 200:
                     return subdomains
 
@@ -50,7 +51,7 @@ class LeakIX(BaseSource):
                                     subdomains.add(val.strip().lower())
                                     break
 
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_exc(e)
 
         return self._filter(subdomains, domain)

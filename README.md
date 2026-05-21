@@ -85,7 +85,8 @@ I recommend this file is excluded from git (`.gitignore`) to prevent credential 
     "securitytrails":        "",
     "shodan":                "",
     "github_token":          "",
-    "censys_token":          "",
+    "censys_id":             "",
+    "censys_secret":         "",
     "grayhatwarfare_token":  "",
     "leakix_token":          "",
     "fullhunt_token":        ""
@@ -104,7 +105,7 @@ Fill in the keys you have. Sources with empty keys still run if they support una
 | `virustotal` | https://www.virustotal.com/gui/join-us |
 | `securitytrails` | https://securitytrails.com/app/account |
 | `shodan` | https://account.shodan.io |
-| `censys_token` | https://search.censys.io/account/api → Personal Access Tokens |
+| `censys_id` / `censys_secret` | https://search.censys.io/account/api → API ID e API Secret (plano pago) |
 | `github_token` | https://github.com/settings/tokens (scope: `public_repo`) |
 | `grayhatwarfare_token` | https://grayhatwarfare.com/account |
 | `leakix_token` | https://leakix.net/login → API Keys |
@@ -510,6 +511,9 @@ eyewitness --web -f subs.txt --no-prompt -d screenshots/
 All sources inherit from `BaseSource` defined in `sources/base.py`.
 The only required method is `fetch(domain)`, which must return a `set[str]`.
 
+The registry in `sources/__init__.py` auto-discovers every `.py` file placed in
+`sources/passive/` or `sources/active/` — **no other file needs to be edited**.
+
 ### New Passive Module
 
 **1. Create** `sources/passive/myservice.py`:
@@ -522,7 +526,8 @@ from core.config import get_key
 
 class MyService(BaseSource):
     NAME = 'myservice'
-    REQUIRES_API_KEY = True  # set False if no key needed
+    DESCRIPTION = 'My custom service'
+    API_TOKEN_IS_REQUIREMENT = True  # set False if no key needed
 
     async def fetch(self, domain: str) -> set[str]:
         api_key = get_key('myservice')  # reads from config/api_keys.json
@@ -545,7 +550,7 @@ class MyService(BaseSource):
         return self._filter(subdomains, domain)  # removes out-of-scope entries
 ```
 
-**2. Add the key** to `config/api_keys.json`:
+**2. Add the key** to `config/api_keys.json` (if the source requires one):
 
 ```json
 {
@@ -553,34 +558,8 @@ class MyService(BaseSource):
 }
 ```
 
-**3. Register the source** in `core/engine.py`:
-
-```python
-from sources.passive.myservice import MyService
-
-ALL_PASSIVE_SOURCES: dict = {
-    ...
-    'myservice': MyService,
-}
-```
-
-**4. Register in** `cli/parser.py`:
-
-```python
-ALL_PASSIVE = [
-    ...
-    'myservice',  # requer API key (config/api_keys.json)
-]
-```
-
-**5. Add to the** `print_sources()` description in `cli/parser.py`:
-
-```python
-passive_info = [
-    ...
-    ('myservice', 'My custom service  [API key obrigatória]'),
-]
-```
+That's it. The source is automatically registered, listed in `--list-sources`,
+and included in `--sources all`.
 
 ---
 
@@ -598,6 +577,8 @@ from sources.base import BaseSource
 
 class MyActive(BaseSource):
     NAME = 'myactive'
+    DESCRIPTION = 'My custom active DNS probe'
+    API_TOKEN_IS_REQUIREMENT = False
 
     async def fetch(self, domain: str) -> set[str]:
         # run_in_executor wraps blocking calls so they don't block the event loop
@@ -619,31 +600,8 @@ class MyActive(BaseSource):
         return self._filter(subdomains, domain)
 ```
 
-**2. Register in** `core/engine.py`:
-
-```python
-from sources.active.myactive import MyActive
-
-ALL_ACTIVE_SOURCES: dict = {
-    ...
-    'myactive': MyActive,
-}
-```
-
-**3. Register in** `cli/parser.py`:
-
-```python
-ALL_ACTIVE = ['zone_transfer', 'dns_mining', 'myactive']
-```
-
-**4. Add description** in `cli/parser.py` `print_sources()`:
-
-```python
-active_info = [
-    ...
-    ('myactive', 'My custom active DNS probe'),
-]
-```
+That's it. The source is automatically registered, listed in `--list-sources`,
+and available via `--sources myactive`.
 
 ---
 
