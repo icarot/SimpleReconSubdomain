@@ -504,6 +504,38 @@ python simplerecon.py -d target.com --verify-live -o txt --outfile subs.txt
 eyewitness --web -f subs.txt --no-prompt -d screenshots/
 ```
 
+### String-X - enrichment and automation
+
+[String-X](https://github.com/MrCl0wnLab/string-x) (`strx`) is a modular automation tool that uses a `{STRING}` placeholder to apply commands and modules to each line of input. It pairs naturally with SimpleReconSubdomain via pipes.
+
+```bash
+# HTTP probe all discovered subdomains
+python simplerecon.py -d target.com --no-banner \
+  | strx -st "echo {STRING}" -module "clc:http_probe" -pm
+
+# Resolve subdomains → extract IPs → look up each IP in Shodan
+python simplerecon.py -d target.com --no-banner \
+  | strx -st "echo {STRING}" -module "clc:dns" -pm \
+  | strx -st "echo {STRING}" -module "ext:ip" -pm \
+  | strx -st "echo {STRING}" -module "clc:shodan" -pm
+
+# Enrich subdomains with DNS + IP geolocation in a single module chain
+python simplerecon.py -d target.com --no-banner \
+  | strx -st "echo {STRING}" -module "clc:dns|ext:ip|clc:geoip" -pm
+
+# Cross-validate with crt.sh and deduplicate
+python simplerecon.py -d target.com --no-banner \
+  | strx -st "echo {STRING}" -module "clc:crtsh" -pm | sort -u
+
+# Save HTTP probe results as JSON
+python simplerecon.py -d target.com --no-banner \
+  | strx -st "echo {STRING}" -module "clc:http_probe|out:json" -pm -o target_http.json
+
+# Send live subdomains to a Telegram bot
+python simplerecon.py -d target.com --no-banner \
+  | strx -st "echo {STRING}" -module "con:telegram" -pm
+```
+
 ---
 
 ## Creating a New Module
