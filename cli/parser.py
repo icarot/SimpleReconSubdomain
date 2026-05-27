@@ -57,6 +57,8 @@ def build_parser() -> argparse.ArgumentParser:
         '  python simplerecon.py -d target.com --output json --outfile result.json\n'
         '  python simplerecon.py -d target.com --verify-live --timeout 10\n'
         '  python simplerecon.py -d target.com --permute\n'
+        '  python simplerecon.py -d target.com --brute wordlist.txt --resolvers config/resolvers.txt\n'
+        '  python simplerecon.py -d target.com --brute wordlist.txt --resolvers https://public-dns.info/nameservers-all.txt --check-resolvers\n'
         '  python simplerecon.py --list-sources\n'
     )
     epilog = '\n'.join(
@@ -131,19 +133,64 @@ def build_parser() -> argparse.ArgumentParser:
         '--brute', metavar='WORDLIST', help='Wordlist path for DNS brute-force'
     )
     parser.add_argument(
-        '--resolvers', metavar='FILE', help='File with custom DNS resolver IPs'
+        '--resolvers', metavar='FILE_OR_URL',
+        help=(
+            'File or URL with DNS resolver IPs, one per line '
+            '(e.g. config/resolvers.txt or https://public-dns.info/nameservers-all.txt). '
+            'Resolvers are shuffled automatically for load distribution.'
+        ),
+    )
+    parser.add_argument(
+        '--check-resolvers',
+        action='store_true',
+        help=(
+            'Test each resolver against example.com before brute-force and remove '
+            'non-responsive ones (PureDNS technique). Adds startup time but improves '
+            'accuracy when using large community resolver lists.'
+        ),
     )
     parser.add_argument(
         '--permute',
         action='store_true',
         help='Generate and resolve Altdns-style subdomain permutations',
     )
+    parser.add_argument(
+        '--wildcard-tests',
+        type=int, default=3,
+        metavar='N',
+        help=(
+            'Number of random probes for wildcard DNS detection (default: 3). '
+            'Higher values reduce false negatives on load-balanced DNS (PureDNS technique).'
+        ),
+    )
+    parser.add_argument(
+        '--validate-resolvers',
+        action='store_true',
+        help=(
+            'After brute-force, re-validate results against trusted resolvers '
+            '(Google/Cloudflare) to eliminate DNS-poisoned false positives (PureDNS two-pass technique).'
+        ),
+    )
 
     # Post-processing
     parser.add_argument(
         '--verify-live',
         action='store_true',
-        help='Verify which subdomains respond to HTTP/HTTPS',
+        help='Verify which subdomains respond to HTTP/HTTPS and extract TLS certificate SANs (Amass technique)',
+    )
+    parser.add_argument(
+        '--recursive',
+        action='store_true',
+        help=(
+            'Re-enumerate discovered subdomains as targets to find deeper sub-subdomains '
+            '(Subfinder --recursive technique).'
+        ),
+    )
+    parser.add_argument(
+        '--recursive-depth',
+        type=int, default=1,
+        metavar='N',
+        help='Maximum recursion depth when --recursive is enabled (default: 1)',
     )
 
     # Verbosity

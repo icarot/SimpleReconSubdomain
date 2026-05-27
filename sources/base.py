@@ -1,3 +1,4 @@
+import asyncio
 from abc import ABC, abstractmethod
 
 import core.colors as colors
@@ -12,6 +13,10 @@ class BaseSource(ABC):
         self.timeout = timeout
         self.rate_limit = rate_limit
         self.verbose = verbose
+        # Semaphore to cap concurrent requests per source (0 = unlimited)
+        self._sem: asyncio.Semaphore | None = (
+            asyncio.Semaphore(rate_limit) if rate_limit > 0 else None
+        )
 
     def _vlog(self, level: int, msg: str) -> None:
         """Print *msg* when self.verbose >= *level*."""
@@ -24,7 +29,13 @@ class BaseSource(ABC):
             print(colors.format_msg(f'[!] [{self.NAME}] {type(e).__name__}: {e}'))
 
     async def _get(self, client, url: str, **kwargs):
-        """Wrap client.get(); logs HTTP status (level 2) and body preview (level 3)."""
+        """Wrap client.get(); enforces rate_limit, logs HTTP status and body preview."""
+        if self._sem:
+            async with self._sem:
+                return await self._do_get(client, url, **kwargs)
+        return await self._do_get(client, url, **kwargs)
+
+    async def _do_get(self, client, url: str, **kwargs):
         resp = await client.get(url, **kwargs)
         if self.verbose >= 2:
             self._vlog(2, f'HTTP {resp.status_code}')

@@ -1,5 +1,4 @@
 {
-
     "alienvault_otx":       "",
     "hackertarget":         "",
     "urlscan":              "",
@@ -11,5 +10,8 @@
     "censys_secret":        "",
     "grayhatwarfare_token": "",
     "leakix_token":         "",
-    "fullhunt_token":       ""
+    "fullhunt_token":       "",
+    "chaos_key":            "",
+    "c99_key":              "",
+    "netlas_key":           ""
 }

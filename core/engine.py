@@ -1,7 +1,11 @@
 import asyncio
+import ipaddress
+import random
 import re
 import sys
 from argparse import Namespace
+
+import httpx
 
 import core.colors as colors
 from core.dedup import DeduplicatedSet
@@ -44,17 +48,88 @@ def load_targets(domain: str | None = None, list_file: str | None = None) -> lis
     return valid
 
 
-def load_resolvers(resolvers_file: str) -> list[str]:
-    try:
-        with open(resolvers_file, 'r') as fh:
-            return [
-                line.strip()
-                for line in fh
-                if line.strip() and not line.startswith('#')
-            ]
-    except FileNotFoundError:
-        print(colors.format_msg(f'[!] Resolvers file not found: {resolvers_file}'))
-        return []
+def load_resolvers(
+    source: str,
+    shuffle: bool = True,
+    verbose: int = 0,
+    quiet: bool = False,
+) -> list[str]:
+    """
+    Load DNS resolver IPs from a local file or a remote URL.
+
+    Accepts one entry per line; lines starting with '#' are comments.
+    Entries may be bare IPs or in "ip:port" format — only the IP is kept.
+    Both IPv4 and IPv6 addresses are accepted (aiodns handles both).
+    Duplicates are removed and the list is shuffled by default so load is
+    distributed across all resolvers rather than hammering the first few.
+
+    Args:
+        source:  Local file path or http(s):// URL.
+        shuffle: Randomise the order of the returned list (default True).
+        verbose: Verbosity level — level ≥1 prints count, ≥2 prints skipped entries.
+        quiet:   Suppress all output.
+
+    Returns:
+        Deduplicated list of valid resolver IP strings.
+    """
+    lines: list[str] = []
+
+    if source.startswith(('http://', 'https://')):
+        # ── Remote URL ───────────────────────────────────────────────────
+        try:
+            resp = httpx.get(source, timeout=15, follow_redirects=True)
+            resp.raise_for_status()
+            lines = resp.text.splitlines()
+            if not quiet:
+                print(colors.format_msg(
+                    f'[*] [resolvers] Downloaded {len(lines)} lines from {source}'
+                ))
+        except Exception as exc:
+            print(colors.format_msg(
+                f'[!] [resolvers] Failed to download resolver list: {exc}'
+            ))
+            return []
+    else:
+        # ── Local file ───────────────────────────────────────────────────
+        try:
+            with open(source, 'r', errors='ignore') as fh:
+                lines = fh.read().splitlines()
+        except FileNotFoundError:
+            print(colors.format_msg(f'[!] [resolvers] File not found: {source}'))
+            return []
+
+    valid: list[str] = []
+    for line in lines:
+        # Strip inline comments (e.g. "8.8.8.8  # Google")
+        line = line.split('#')[0].strip()
+        if not line:
+            continue
+        # Support "ip:port" format — keep only the IP part
+        ip_part = line.split(':')[0].strip()
+        try:
+            addr = ipaddress.ip_address(ip_part)
+            valid.append(str(addr))
+        except ValueError:
+            if verbose >= 2 and not quiet:
+                print(colors.format_msg(
+                    f'[-] [resolvers] Skipping invalid entry: {line!r}'
+                ))
+
+    # Deduplicate while preserving order before shuffle
+    seen: dict[str, None] = {}
+    for ip in valid:
+        seen[ip] = None
+    valid = list(seen.keys())
+
+    if shuffle:
+        random.shuffle(valid)
+
+    if not quiet and (verbose >= 1):
+        print(colors.format_msg(
+            f'[*] [resolvers] Loaded {len(valid)} valid resolver IPs'
+        ))
+
+    return valid
 
 
 class Engine:
@@ -116,7 +191,12 @@ class Engine:
     # Per-target enumeration
     # ------------------------------------------------------------------
 
-    async def run_target(self, target: str) -> dict:
+    async def run_target(
+        self,
+        target: str,
+        _seen_targets: set[str] | None = None,
+        _depth: int = 0,
+    ) -> dict:
         self.log(f"\n{'-'*60}")
         self.log(f'[*] Enumerating: {target}')
         self.log(f"{'-'*60}")
@@ -124,12 +204,17 @@ class Engine:
         dedup = DeduplicatedSet()
         source_counts: dict = {}
         passive_sources, active_sources = self._select_sources()
+        rate_limit: int = getattr(self.args, 'rate_limit', 0) or 0
 
         # ── Passive sources ──────────────────────────────────────────
         if not self.args.no_passive:
             self.log('[*] Running passive sources...')
             tasks = [
-                self._run_source(name, cls(timeout=self.args.timeout, verbose=self.verbose), target, dedup, source_counts)
+                self._run_source(
+                    name,
+                    cls(timeout=self.args.timeout, rate_limit=rate_limit, verbose=self.verbose),
+                    target, dedup, source_counts,
+                )
                 for name, cls in passive_sources.items()
             ]
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -139,7 +224,9 @@ class Engine:
             self.log('[*] Running active sources...')
             for name, cls in active_sources.items():
                 await self._run_source(
-                    name, cls(timeout=self.args.timeout, verbose=self.verbose), target, dedup, source_counts
+                    name,
+                    cls(timeout=self.args.timeout, rate_limit=rate_limit, verbose=self.verbose),
+                    target, dedup, source_counts,
                 )
 
         # ── DNS brute-force ───────────────────────────────────────────
@@ -154,11 +241,35 @@ class Engine:
             else:
                 self.log('[*] Starting DNS brute-force...')
                 resolvers: list[str] = (
-                    load_resolvers(self.args.resolvers) if self.args.resolvers else []
+                    load_resolvers(
+                        self.args.resolvers,
+                        verbose=self.verbose,
+                        quiet=self.quiet,
+                    )
+                    if self.args.resolvers else []
                 )
 
-                resolver = aiodns.DNSResolver()
-                is_wildcard, wildcard_ips = await detect_wildcard(target, resolver, verbose=self.verbose)
+                # ── Optional resolver health check (PureDNS technique) ────
+                if getattr(self.args, 'check_resolvers', False) and resolvers:
+                    from bruteforce.resolver_check import check_resolvers
+                    self.log('[*] Running resolver health check...')
+                    resolvers = await check_resolvers(
+                        resolvers,
+                        verbose=self.verbose,
+                        quiet=self.quiet,
+                    )
+                    if not resolvers:
+                        self.log('[!] No working resolvers found — falling back to defaults')
+
+                wildcard_tests: int = getattr(self.args, 'wildcard_tests', 3) or 3
+                # Use custom resolvers for wildcard detection too (bug fix)
+                resolver = aiodns.DNSResolver(
+                    nameservers=resolvers if resolvers else None,
+                    timeout=3,
+                )
+                is_wildcard, wildcard_ips = await detect_wildcard(
+                    target, resolver, tests=wildcard_tests, verbose=self.verbose
+                )
                 if is_wildcard:
                     self.log(f'[!] Wildcard DNS detected on {target} - filtering false positives')
 
@@ -172,6 +283,18 @@ class Engine:
                     wildcard=is_wildcard,
                     wildcard_ips=wildcard_ips,
                 )
+
+                # ── Two-pass trusted resolver validation (PureDNS technique) ──
+                if getattr(self.args, 'validate_resolvers', False) and brute_found:
+                    from bruteforce.validator import validate_with_trusted
+                    self.log('[*] Running two-pass trusted resolver validation...')
+                    brute_found = await validate_with_trusted(
+                        brute_found,
+                        timeout=self.args.timeout,
+                        verbose=self.verbose,
+                        quiet=self.quiet,
+                    )
+
                 new_items = dedup.update(brute_found)
                 source_counts['bruteforce'] = len(new_items)
                 self.log(f'[*] [bruteforce] +{len(new_items)} new subdomains')
@@ -207,7 +330,7 @@ class Engine:
         subdomains = dedup.as_set()
         self.log(f'\n[+] Total unique subdomains found: {len(subdomains)}')
 
-        # ── Live host verification ─────────────────────────────────────
+        # ── Live host verification + TLS SAN extraction ───────────────
         live_results: dict = {}
         if self.args.verify_live and subdomains:
             from verify.live_check import verify_live
@@ -217,6 +340,64 @@ class Engine:
             )
             live_count = sum(1 for v in live_results.values() if v.get('status'))
             self.log(f'[+] Live hosts: {live_count}/{len(subdomains)}')
+
+            # Harvest new subdomains from TLS SANs (Amass technique)
+            san_candidates: set[str] = set()
+            for host_info in live_results.values():
+                for san in host_info.get('tls_sans', []):
+                    san_clean = san.lstrip('*.').strip().lower()
+                    if san_clean:
+                        san_candidates.add(san_clean)
+
+            if san_candidates:
+                new_from_sans = dedup.update(san_candidates)
+                if new_from_sans:
+                    source_counts['tls_sans'] = len(new_from_sans)
+                    self.log(f'[*] [tls_sans] +{len(new_from_sans)} new subdomains from certificates')
+                    subdomains = dedup.as_set()
+
+        # ── Recursive enumeration (Subfinder --recursive technique) ───
+        recursive: bool = getattr(self.args, 'recursive', False)
+        recursive_depth: int = getattr(self.args, 'recursive_depth', 1) or 1
+
+        if recursive and _depth < recursive_depth:
+            if _seen_targets is None:
+                _seen_targets = {target}
+            else:
+                _seen_targets.add(target)
+
+            # Only recurse into subdomains with 3+ labels (actual subdomains)
+            recurse_candidates = {
+                sub for sub in subdomains
+                if sub.count('.') > target.count('.') + 0
+                and sub not in _seen_targets
+                and DOMAIN_PATTERN.match(sub)
+            }
+
+            if recurse_candidates:
+                self.log(
+                    f'[*] [recursive] depth {_depth + 1}/{recursive_depth} — '
+                    f'enumerating {len(recurse_candidates)} subdomains'
+                )
+                for sub_target in sorted(recurse_candidates):
+                    if sub_target in _seen_targets:
+                        continue
+                    _seen_targets.add(sub_target)
+                    sub_result = await self.run_target(
+                        sub_target,
+                        _seen_targets=_seen_targets,
+                        _depth=_depth + 1,
+                    )
+                    # Merge recursive findings back into current dedup set
+                    new_recursive = dedup.update(sub_result['subdomains'])
+                    if new_recursive:
+                        source_counts[f'recursive:{sub_target}'] = len(new_recursive)
+                        self.log(
+                            f'[*] [recursive] +{len(new_recursive)} new subdomains '
+                            f'from {sub_target}'
+                        )
+
+                subdomains = dedup.as_set()
 
         return {
             'domain': target,

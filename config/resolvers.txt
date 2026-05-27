@@ -1,0 +1,46 @@
+# SimpleReconSubdomain — bundled public DNS resolvers
+# Curated list of reliable public resolvers for DNS brute-force.
+# Usage: python simplerecon.py -d target.com --brute wordlist.txt --resolvers config/resolvers.txt
+#
+# For a much larger list (7000+ resolvers), use:
+#   --resolvers https://public-dns.info/nameservers-all.txt
+# with --check-resolvers to filter out unresponsive ones.
+#
+# Format: one IP per line; lines starting with # are ignored.
+
+# ── Tier 1: Major public resolvers ─────────────────────────────────────────
+8.8.8.8          # Google Primary
+8.8.4.4          # Google Secondary
+1.1.1.1          # Cloudflare Primary
+1.0.0.1          # Cloudflare Secondary
+9.9.9.9          # Quad9 (security-filtered)
+149.112.112.112  # Quad9 Secondary
+208.67.222.222   # OpenDNS Primary
+208.67.220.220   # OpenDNS Secondary
+64.6.64.6        # Verisign Primary
+64.6.65.6        # Verisign Secondary
+
+# ── Tier 2: Regional / alternative resolvers ───────────────────────────────
+84.200.69.80     # DNS.WATCH (DE)
+84.200.70.40     # DNS.WATCH Secondary (DE)
+8.26.56.26       # Comodo Secure DNS
+8.20.247.20      # Comodo Secure DNS Secondary
+77.88.8.8        # Yandex DNS (RU)
+77.88.8.1        # Yandex DNS Secondary (RU)
+176.103.130.130  # AdGuard DNS
+176.103.130.131  # AdGuard DNS Secondary
+185.228.168.9    # CleanBrowsing Security
+185.228.169.9    # CleanBrowsing Security Secondary
+94.140.14.14     # AdGuard DNS (EU)
+94.140.15.15     # AdGuard DNS Secondary (EU)
+195.46.39.39     # SafeDNS Primary
+195.46.39.40     # SafeDNS Secondary
+
+# ── Tier 3: Additional public resolvers ────────────────────────────────────
+198.101.242.72   # Alternate DNS
+23.253.163.53    # Alternate DNS Secondary
+91.108.4.4       # Freenom World
+80.80.80.80      # Freenom World Secondary
+80.80.81.81      # Freenom World Tertiary
+37.235.1.174     # FreeDNS (AT)
+37.235.1.177     # FreeDNS Secondary (AT)

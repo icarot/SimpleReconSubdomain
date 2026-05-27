@@ -30,16 +30,28 @@ def save_output(
         timestamp = datetime.now().isoformat()
 
         if fmt == 'json':
+            # Build live_hosts with tls_sans included when available
+            live_hosts: dict = {}
+            for sub, info in live.items():
+                if info.get('status') is not None:
+                    entry = {
+                        'status': info.get('status'),
+                        'title': info.get('title', ''),
+                        'server': info.get('server', ''),
+                        'content_length': info.get('content_length', 0),
+                        'url': info.get('url', ''),
+                    }
+                    sans = info.get('tls_sans', [])
+                    if sans:
+                        entry['tls_sans'] = sans
+                    live_hosts[sub] = entry
+
             data = {
                 'domain': domain,
                 'timestamp': timestamp,
                 'total': len(subdomains),
                 'subdomains': sorted(subdomains),
-                'live_hosts': {
-                    sub: info
-                    for sub, info in live.items()
-                    if info.get('status') is not None
-                },
+                'live_hosts': live_hosts,
                 'sources': sources,
             }
             segments.append(json.dumps(data, indent=2))
@@ -48,17 +60,19 @@ def save_output(
             buf = io.StringIO()
             writer = csv.DictWriter(
                 buf,
-                fieldnames=['domain', 'subdomain', 'status', 'title', 'server'],
+                fieldnames=['domain', 'subdomain', 'status', 'title', 'server', 'tls_sans'],
             )
             writer.writeheader()
             for sub in sorted(subdomains):
                 live_info = live.get(sub, {})
+                sans = live_info.get('tls_sans', [])
                 writer.writerow({
                     'domain': domain,
                     'subdomain': sub,
                     'status': live_info.get('status', ''),
                     'title': live_info.get('title', ''),
                     'server': live_info.get('server', ''),
+                    'tls_sans': '|'.join(sans) if sans else '',
                 })
             segments.append(buf.getvalue())
 
