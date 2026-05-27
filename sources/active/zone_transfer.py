@@ -1,4 +1,6 @@
 import asyncio
+
+import core.colors as colors
 from sources.base import BaseSource
 
 
@@ -19,7 +21,7 @@ class ZoneTransfer(BaseSource):
             import dns.query
             import dns.exception
         except ImportError:
-            print('[!] dnspython not installed. Run: pip install dnspython')
+            print(colors.format_msg('[!] dnspython not installed. Run: pip install dnspython'))
             return subdomains
 
         try:
@@ -37,7 +39,7 @@ class ZoneTransfer(BaseSource):
                     name_str = str(name)
                     if name_str != '@':
                         subdomains.add(f'{name_str}.{domain}')
-                print(f'  [zone_transfer] AXFR SUCCESS on {ns_str}!')
+                print(colors.format_msg(f'[+] [zone_transfer] AXFR SUCCESS on {ns_str}!'))
             except Exception:
                 pass  # AXFR denied - expected for most nameservers
 

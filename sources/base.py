@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+import core.colors as colors
+
 
 class BaseSource(ABC):
     NAME: str = ''
@@ -14,12 +16,12 @@ class BaseSource(ABC):
     def _vlog(self, level: int, msg: str) -> None:
         """Print *msg* when self.verbose >= *level*."""
         if self.verbose >= level:
-            print(f'\033[94m[*]\033[0m \033[96m[{self.NAME}]\033[0m {msg}')
+            print(colors.format_msg(f'[*] [{self.NAME}] {msg}'))
 
     def _log_exc(self, e: Exception) -> None:
         """Print exception class and message at verbose level 4+."""
         if self.verbose >= 4:
-            print(f'\033[91m[!] [{self.NAME}] {type(e).__name__}: {e}\033[0m')
+            print(colors.format_msg(f'[!] [{self.NAME}] {type(e).__name__}: {e}'))
 
     async def _get(self, client, url: str, **kwargs):
         """Wrap client.get(); logs HTTP status (level 2) and body preview (level 3)."""

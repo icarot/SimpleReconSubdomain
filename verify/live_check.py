@@ -3,6 +3,8 @@ import re
 
 import httpx
 
+import core.colors as colors
+
 
 async def verify_live(
     subdomains: set[str],
@@ -39,7 +41,7 @@ async def verify_live(
                         if not quiet:
                             title = results[sub]['title']
                             title_str = f' - {title}' if title else ''
-                            print(f'  [LIVE] {sub} → {resp.status_code}{title_str}')
+                            print(colors.format_msg(f'[LIVE] {sub} → {resp.status_code}{title_str}'))
                         return
                 except Exception:
                     pass

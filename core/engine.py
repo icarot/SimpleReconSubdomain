@@ -158,7 +158,7 @@ class Engine:
                 )
 
                 resolver = aiodns.DNSResolver()
-                is_wildcard, wildcard_ips = await detect_wildcard(target, resolver)
+                is_wildcard, wildcard_ips = await detect_wildcard(target, resolver, verbose=self.verbose)
                 if is_wildcard:
                     self.log(f'[!] Wildcard DNS detected on {target} - filtering false positives')
 

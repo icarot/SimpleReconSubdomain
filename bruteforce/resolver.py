@@ -3,6 +3,8 @@ from typing import Optional
 
 import aiodns
 
+import core.colors as colors
+
 DEFAULT_RESOLVERS = [
     '8.8.8.8', '8.8.4.4',      # Google
     '1.1.1.1', '1.0.0.1',      # Cloudflare
@@ -53,14 +55,14 @@ async def dns_bruteforce(
                     if line.strip() and not line.startswith('#')
                 }
         except FileNotFoundError:
-            print(f'[!] Wordlist not found: {wordlist}')
+            print(colors.format_msg(f'[!] Wordlist not found: {wordlist}'))
             return found
 
     if not words:
         return found
 
     if not quiet:
-        print(f'[+] [brute] {len(words)} candidates → {domain}')
+        print(colors.format_msg(f'[+] [brute] {len(words)} candidates → {domain}'))
 
     # Single shared resolver for efficiency
     resolver = aiodns.DNSResolver(nameservers=resolvers, timeout=3)
@@ -74,6 +76,7 @@ async def dns_bruteforce(
         )
 
         async with semaphore:
+            errors: list[tuple[str, aiodns.error.DNSError]] = []
             for rtype in record_types:
                 try:
                     result = await resolver.query(subdomain, rtype)
@@ -81,13 +84,30 @@ async def dns_bruteforce(
                     if wildcard and wildcard_ips and rtype == 'A':
                         resolved = {r.host for r in result}
                         if resolved.issubset(wildcard_ips):
+                            if verbose >= 2 and not quiet:
+                                print(colors.format_msg(f'[-] {subdomain} (wildcard filtered)'))
                             return
                     found.add(subdomain)
                     if verbose >= 1 and not quiet:
-                        print(f'  [+] {subdomain} ({rtype})')
+                        print(colors.format_msg(f'[+] {subdomain} ({rtype})'))
                     return
-                except aiodns.error.DNSError:
+                except aiodns.error.DNSError as exc:
+                    errors.append((rtype, exc))
                     continue
+
+            # All record types exhausted without a valid result
+            if verbose >= 1 and not quiet:
+                if verbose >= 2:
+                    detail = ', '.join(
+                        f'{rt}:{str(e).strip() or type(e).__name__}'
+                        for rt, e in errors
+                    )
+                    print(colors.format_msg(f'[-] {subdomain} (unresolved — {detail})'))
+                    if verbose >= 4:
+                        for rt, e in errors:
+                            print(colors.format_msg(f'    [{rt}] {e!r}'))
+                else:
+                    print(colors.format_msg(f'[-] {subdomain} (unresolved)'))
 
     await asyncio.gather(*[resolve_candidate(w) for w in words])
     return found

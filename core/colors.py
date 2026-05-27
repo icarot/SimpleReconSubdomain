@@ -35,22 +35,39 @@ def _c(code: str, text: str) -> str:
     return f'\033[{code}m{text}\033[0m'
 
 
-def bold(text: str)   -> str: return _c('1',  text)
-def dim(text: str)    -> str: return _c('2',  text)
-def gray(text: str)   -> str: return _c('90', text)
-def red(text: str)    -> str: return _c('91', text)
-def green(text: str)  -> str: return _c('92', text)
-def yellow(text: str) -> str: return _c('93', text)
-def blue(text: str)   -> str: return _c('94', text)
-def cyan(text: str)   -> str: return _c('96', text)
-def white(text: str)  -> str: return _c('97', text)
+def bold(text: str)    -> str: return _c('1',  text)
+def dim(text: str)     -> str: return _c('2',  text)
+def gray(text: str)    -> str: return _c('90', text)
+def red(text: str)     -> str: return _c('91', text)
+def green(text: str)   -> str: return _c('92', text)
+def yellow(text: str)  -> str: return _c('93', text)
+def blue(text: str)    -> str: return _c('94', text)
+def magenta(text: str) -> str: return _c('95', text)
+def cyan(text: str)    -> str: return _c('96', text)
+def white(text: str)   -> str: return _c('97', text)
 
 
-_SEP_RE = re.compile(r'^-{10,}$')
+_SEP_RE  = re.compile(r'^-{10,}$')
+# Strict IPv4: four 1–3 digit groups separated by dots
+_IPv4_RE = re.compile(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b')
+# FQDN with 3+ labels (e.g. api.example.com); requires an alphabetic TLD
+_FQDN_RE = re.compile(
+    r'\b((?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.){2,}[a-zA-Z]{2,})\b'
+)
+
+
+def _bracket_label(m: re.Match) -> str:
+    """Color a [LABEL] token. Special labels get distinct colors; rest → cyan."""
+    word = m.group(1)
+    if word == 'x':
+        return red(f'[{word}]')
+    if word == 'LIVE':
+        return bold(green(f'[{word}]'))
+    return f'[{cyan(word)}]'
 
 
 def format_msg(msg: str) -> str:
-    """Apply contextual colors to a log message based on its prefix tokens."""
+    """Apply contextual colors to a log message based on its content."""
     if not _enabled:
         return msg
 
@@ -60,16 +77,24 @@ def format_msg(msg: str) -> str:
     if _SEP_RE.match(stripped):
         return gray(msg)
 
-    # Colorize standard prefix tokens (order matters: do before generic [word] rule)
+    # Status prefix tokens whose content is non-word (safe from the [\w+] rule below)
     if '[+]' in msg:
         msg = msg.replace('[+]', green('[+]'), 1)
+    if '[-]' in msg:
+        msg = msg.replace('[-]', gray('[-]'), 1)
     if '[*]' in msg:
         msg = msg.replace('[*]', blue('[*]'), 1)
     if '[!]' in msg:
         msg = msg.replace('[!]', yellow('[!]'), 1)
 
-    # Colorize source/module names in brackets: [crtsh], [virustotal], etc.
-    # \w matches only alphanumeric + underscore, so [+] / [*] / [!] are not affected
-    msg = re.sub(r'\[(\w+)\]', lambda m: f'[{cyan(m.group(1))}]', msg)
+    # Highlight IPv4 addresses
+    msg = _IPv4_RE.sub(lambda m: cyan(m.group(1)), msg)
+
+    # Highlight FQDNs with 3+ labels (e.g. api.example.com)
+    msg = _FQDN_RE.sub(lambda m: white(m.group(1)), msg)
+
+    # Colorize [word] labels: [brute], [crtsh], [x], [LIVE], etc.
+    # Runs last so ANSI codes injected above do not interfere.
+    msg = re.sub(r'\[(\w+)\]', _bracket_label, msg)
 
     return msg
