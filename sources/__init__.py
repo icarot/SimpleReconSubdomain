@@ -26,8 +26,12 @@ def _load_package(package) -> dict:
                 if isinstance(obj, type) and getattr(obj, 'NAME', None) == module_name:
                     result[module_name] = obj
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            import sys
+            print(
+                f'[!] [sources] Failed to load {package.__name__}.{module_name}: {e}',
+                file=sys.stderr,
+            )
     return result
 
 

@@ -161,6 +161,9 @@ class Engine:
         requested = {s.strip() for s in self.args.sources.split(',')}
         passive = {k: v for k, v in ALL_PASSIVE_SOURCES.items() if k in requested}
         active = {k: v for k, v in ALL_ACTIVE_SOURCES.items() if k in requested}
+        unknown = requested - set(ALL_PASSIVE_SOURCES) - set(ALL_ACTIVE_SOURCES)
+        for name in sorted(unknown):
+            self.log(f'[!] Unknown source: {name!r} — skipping')
         return passive, active
 
     # ------------------------------------------------------------------
@@ -205,6 +208,7 @@ class Engine:
         source_counts: dict = {}
         passive_sources, active_sources = self._select_sources()
         rate_limit: int = getattr(self.args, 'rate_limit', 0) or 0
+        resolvers: list[str] = []  # shared across brute-force and permutation
 
         # ── Passive sources ──────────────────────────────────────────
         if not self.args.no_passive:
@@ -222,12 +226,15 @@ class Engine:
         # ── Active sources (DNS-based) ────────────────────────────────
         if active_sources:
             self.log('[*] Running active sources...')
-            for name, cls in active_sources.items():
-                await self._run_source(
+            active_tasks = [
+                self._run_source(
                     name,
                     cls(timeout=self.args.timeout, rate_limit=rate_limit, verbose=self.verbose),
                     target, dedup, source_counts,
                 )
+                for name, cls in active_sources.items()
+            ]
+            await asyncio.gather(*active_tasks, return_exceptions=True)
 
         # ── DNS brute-force ───────────────────────────────────────────
         if self.args.brute:
@@ -240,7 +247,7 @@ class Engine:
                 self.args.brute = None
             else:
                 self.log('[*] Starting DNS brute-force...')
-                resolvers: list[str] = (
+                resolvers = (
                     load_resolvers(
                         self.args.resolvers,
                         verbose=self.verbose,
@@ -311,9 +318,12 @@ class Engine:
                 self.log('[*] Generating subdomain permutations...')
                 perms = generate_permutations(dedup.as_set(), target)
                 self.log(f'[*] Generated {len(perms)} candidates - resolving...')
-                resolvers = (
-                    load_resolvers(self.args.resolvers) if self.args.resolvers else []
-                )
+                if not resolvers and self.args.resolvers:
+                    resolvers = load_resolvers(
+                        self.args.resolvers,
+                        verbose=self.verbose,
+                        quiet=self.quiet,
+                    )
                 perm_found = await dns_bruteforce(
                     domain=target,
                     words=perms,
@@ -336,7 +346,10 @@ class Engine:
             from verify.live_check import verify_live
             self.log('[*] Verifying live hosts...')
             live_results = await verify_live(
-                subdomains, timeout=self.args.timeout, quiet=self.quiet
+                subdomains,
+                timeout=self.args.timeout,
+                quiet=self.quiet,
+                concurrency=self.args.threads * 5,
             )
             live_count = sum(1 for v in live_results.values() if v.get('status'))
             self.log(f'[+] Live hosts: {live_count}/{len(subdomains)}')
@@ -346,7 +359,7 @@ class Engine:
             for host_info in live_results.values():
                 for san in host_info.get('tls_sans', []):
                     san_clean = san.lstrip('*.').strip().lower()
-                    if san_clean:
+                    if san_clean and (san_clean == target or san_clean.endswith(f'.{target}')):
                         san_candidates.add(san_clean)
 
             if san_candidates:

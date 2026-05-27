@@ -67,7 +67,9 @@ async def check_resolvers(
             r = aiodns.DNSResolver(nameservers=[ip], timeout=timeout)
             try:
                 result = await r.query(_TEST_DOMAIN, 'A')
-                if result:
+                if result and any(
+                    rr.host.startswith(_TEST_EXPECTED_PREFIX) for rr in result
+                ):
                     passed[idx] = True
                     if verbose >= 2 and not quiet:
                         ips = ', '.join(rr.host for rr in result)

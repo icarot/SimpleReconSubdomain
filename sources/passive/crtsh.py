@@ -10,9 +10,9 @@ class CrtSh(BaseSource):
     async def fetch(self, domain: str) -> set[str]:
         url = f'https://crt.sh/?q=%.{domain}&output=json'
         subdomains: set[str] = set()
-        self.timeout = 60.0  # Crt.sh can be slow to respond, increase timeout
+        _timeout = max(self.timeout, 60.0)  # crt.sh can be slow; never go below 60s
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=_timeout, follow_redirects=True) as client:
                 resp = await self._get(client, url)
                 if resp.status_code != 200:
                     return subdomains

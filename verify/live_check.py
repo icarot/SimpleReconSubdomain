@@ -23,6 +23,7 @@ async def verify_live(
     subdomains: set[str],
     timeout: int = 5,
     quiet: bool = False,
+    concurrency: int = 50,
 ) -> dict[str, dict]:
     """
     Probe each subdomain over HTTPS then HTTP.
@@ -32,19 +33,24 @@ async def verify_live(
     For HTTPS hosts, 'tls_sans' contains SANs from the server certificate.
     """
     results: dict[str, dict] = {}
-    semaphore = asyncio.Semaphore(50)
+    semaphore = asyncio.Semaphore(concurrency)
+    limits = httpx.Limits(
+        max_connections=concurrency,
+        max_keepalive_connections=max(1, concurrency // 2),
+    )
 
-    async def check(sub: str) -> None:
-        async with semaphore:
-            https_ok = False
-            for scheme in ('https', 'http'):
-                url = f'{scheme}://{sub}'
-                try:
-                    async with httpx.AsyncClient(
-                        timeout=timeout,
-                        follow_redirects=True,
-                        verify=False,  # intentional: recon may hit self-signed certs
-                    ) as client:
+    async with httpx.AsyncClient(
+        timeout=timeout,
+        follow_redirects=True,
+        verify=False,  # intentional: recon may hit self-signed certs
+        limits=limits,
+    ) as client:
+        async def check(sub: str) -> None:
+            async with semaphore:
+                https_ok = False
+                for scheme in ('https', 'http'):
+                    url = f'{scheme}://{sub}'
+                    try:
                         resp = await client.get(url)
                         entry: dict = {
                             'url': url,
@@ -71,15 +77,14 @@ async def verify_live(
                                 f'[LIVE] {sub} → {resp.status_code}{title_str}{san_str}'
                             ))
                         return
-                except Exception:
-                    if scheme == 'https':
-                        https_ok = False
-                    pass
+                    except Exception:
+                        if scheme == 'https':
+                            https_ok = False
 
-            if not https_ok:
-                results[sub] = {'url': None, 'status': None, 'tls_sans': []}
+                if not https_ok:
+                    results[sub] = {'url': None, 'status': None, 'tls_sans': []}
 
-    await asyncio.gather(*[check(sub) for sub in subdomains])
+        await asyncio.gather(*[check(sub) for sub in subdomains])
     return results
 
 
@@ -134,9 +139,15 @@ def _parse_sans_from_pem(cert_pem: str) -> list[str]:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
-        decoded = ssl._ssl._test_decode_cert(  # type: ignore[attr-defined]
-            _der_to_temp_file(cert_der)
-        )
+        tmp_path = _der_to_temp_file(cert_der)
+        try:
+            decoded = ssl._ssl._test_decode_cert(tmp_path)  # type: ignore[attr-defined]
+        finally:
+            import os as _os
+            try:
+                _os.unlink(tmp_path)
+            except OSError:
+                pass
         for key, value in decoded.get('subjectAltName', ()):
             if key == 'DNS':
                 sans.append(value.lower())
