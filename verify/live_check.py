@@ -18,6 +18,56 @@ import httpx
 
 import core.colors as colors
 
+# ---------------------------------------------------------------------------
+# CNAME-based takeover fingerprints
+# If the CNAME chain contains any of these suffixes the subdomain is a takeover
+# candidate even when the HTTP response body shows a generic error page.
+# ---------------------------------------------------------------------------
+_TAKEOVER_CNAME: dict[str, list[str]] = {
+    'aws-s3':          ['.s3.amazonaws.com', '.s3-website', '.s3-', 's3.amazon'],
+    'github-pages':    ['.github.io'],
+    'heroku':          ['.herokudns.com', '.herokuapp.com'],
+    'netlify':         ['.netlify.app', '.netlify.com'],
+    'azure':           ['.azurewebsites.net', '.cloudapp.azure.com',
+                        '.trafficmanager.net', '.azureedge.net'],
+    'fastly':          ['.fastly.net', '.fastlylb.net'],
+    'shopify':         ['shops.myshopify.com'],
+    'ghost-io':        ['.ghost.io'],
+    'surge-sh':        ['.surge.sh'],
+    'zendesk':         ['.zendesk.com'],
+    'readme-io':       ['.readme.io', '.readmessl.com'],
+    'unbounce':        ['.unbouncepages.com'],
+    'webflow':         ['.webflow.io'],
+    'squarespace':     ['.squarespace.com'],
+    'hubspot':         ['.hs-sites.com', '.hubspot.net', '.hubspotpagebuilder.com'],
+    'freshdesk':       ['.freshdesk.com'],
+    'sendgrid':        ['.sendgrid.net'],
+    'uservoice':       ['.uservoice.com'],
+    'wpengine':        ['.wpengine.com'],
+    'pantheon':        ['.pantheon.io', '.getpantheon.com'],
+    'teamwork':        ['.teamwork.com'],
+    'acquia':          ['.acquia-sites.com'],
+    'bigcartel':       ['.bigcartel.com'],
+}
+
+# ---------------------------------------------------------------------------
+# WAF / CDN fingerprints (response header based)
+# ---------------------------------------------------------------------------
+_WAF_HEADERS: dict[str, list[tuple[str, str]]] = {
+    'cloudflare':   [('server', 'cloudflare'), ('cf-ray', '')],
+    'akamai':       [('x-akamai-transformed', ''), ('x-check-cacheable', ''),
+                     ('akamai-origin-hop', '')],
+    'fastly':       [('x-fastly-request-id', ''), ('x-served-by', 'cache-')],
+    'cloudfront':   [('x-amz-cf-id', ''), ('x-amz-cf-pop', ''), ('via', 'cloudfront')],
+    'incapsula':    [('x-iinfo', ''), ('x-cdn', 'incapsula')],
+    'sucuri':       [('x-sucuri-id', ''), ('x-sucuri-cache', '')],
+    'azure-cdn':    [('x-azure-ref', ''), ('x-ec-custom-error', '')],
+    'google':       [('x-goog-generation', ''), ('via', '1.1 google')],
+    'imperva':      [('x-protected-by', 'imperva'), ('x-iinfo', '')],
+    'barracuda':    [('x-barracuda-', '')],
+    'f5-big-ip':    [('x-waf-status', ''), ('x-wa-info', '')],
+}
+
 
 # ---------------------------------------------------------------------------
 # Subdomain-takeover fingerprints
@@ -66,7 +116,7 @@ _TAKEOVER_HEADERS: dict[str, list[tuple[str, str]]] = {
 
 
 def _detect_takeover(body: str, headers: dict) -> str | None:
-    """Return the service name if the response matches a takeover fingerprint, else None."""
+    """Return the service name if the response matches a body/header takeover fingerprint."""
     body_lower = body.lower()
     for service, patterns in _TAKEOVER_BODY.items():
         if any(p in body_lower for p in patterns):
@@ -76,6 +126,57 @@ def _detect_takeover(body: str, headers: dict) -> str | None:
             if hdr_sub in headers.get(hdr_name, '').lower():
                 return service
     return None
+
+
+def _detect_cname_takeover(cname_chain: list[str]) -> str | None:
+    """Return service name if any CNAME in the chain matches a takeover fingerprint."""
+    chain_lower = ' '.join(cname_chain).lower()
+    for service, suffixes in _TAKEOVER_CNAME.items():
+        if any(s in chain_lower for s in suffixes):
+            return service
+    return None
+
+
+def _detect_waf(headers: dict) -> str | None:
+    """Return WAF/CDN name from response headers, or None."""
+    headers_lower = {k.lower(): v.lower() for k, v in headers.items()}
+    for waf, checks in _WAF_HEADERS.items():
+        for hdr, value in checks:
+            if hdr in headers_lower:
+                if not value or value in headers_lower[hdr]:
+                    return waf
+    return None
+
+
+def _fetch_cname_chain_sync(hostname: str) -> list[str]:
+    """Blocking: walk the CNAME chain using dnspython."""
+    try:
+        import dns.resolver
+        chain: list[str] = []
+        current = hostname
+        for _ in range(10):  # guard against CNAME loops
+            try:
+                answer = dns.resolver.resolve(current, 'CNAME')
+                target = str(answer[0].target).rstrip('.').lower()
+                chain.append(target)
+                current = target
+            except Exception:
+                break
+        return chain
+    except ImportError:
+        return []
+
+
+async def _get_cname_chain(hostname: str, timeout: int = 5) -> list[str]:
+    """Async wrapper: walk CNAME chain for *hostname*."""
+    loop = asyncio.get_event_loop()
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, _fetch_cname_chain_sync, hostname),
+            timeout=timeout,
+        )
+    except Exception:
+        return []
 
 
 async def verify_live(
@@ -111,6 +212,10 @@ async def verify_live(
                     url = f'{scheme}://{sub}'
                     try:
                         resp = await client.get(url)
+                        resp_headers = dict(resp.headers)
+                        body_takeover = _detect_takeover(resp.text, resp_headers)
+                        waf = _detect_waf(resp_headers)
+
                         entry: dict = {
                             'url': url,
                             'status': resp.status_code,
@@ -118,8 +223,18 @@ async def verify_live(
                             'server': resp.headers.get('server', ''),
                             'content_length': len(resp.content),
                             'tls_sans': [],
-                            'takeover': _detect_takeover(resp.text, dict(resp.headers)),
+                            'takeover': body_takeover,
+                            'cname': None,
+                            'waf': waf,
                         }
+
+                        # CNAME chain + CNAME-based takeover detection
+                        cname_chain = await _get_cname_chain(sub, timeout=timeout)
+                        if cname_chain:
+                            entry['cname'] = cname_chain[0]
+                            cname_to = _detect_cname_takeover(cname_chain)
+                            if cname_to and not entry['takeover']:
+                                entry['takeover'] = f'cname:{cname_to}'
 
                         # Extract TLS SANs when connecting over HTTPS
                         if scheme == 'https':
@@ -134,8 +249,9 @@ async def verify_live(
                             title_str = f' - {title}' if title else ''
                             san_str = f' [{len(entry["tls_sans"])} SANs]' if entry['tls_sans'] else ''
                             takeover_str = f' [TAKEOVER? {entry["takeover"]}]' if entry['takeover'] else ''
+                            waf_str = f' [{waf}]' if waf else ''
                             print(colors.format_msg(
-                                f'[LIVE] {sub} → {resp.status_code}{title_str}{san_str}{takeover_str}'
+                                f'[LIVE] {sub} → {resp.status_code}{title_str}{san_str}{takeover_str}{waf_str}'
                             ))
                         return
                     except Exception:
@@ -143,7 +259,7 @@ async def verify_live(
                             https_ok = False
 
                 if not https_ok:
-                    results[sub] = {'url': None, 'status': None, 'tls_sans': [], 'takeover': None}
+                    results[sub] = {'url': None, 'status': None, 'tls_sans': [], 'takeover': None, 'cname': None, 'waf': None}
 
         await asyncio.gather(*[check(sub) for sub in subdomains])
     return results

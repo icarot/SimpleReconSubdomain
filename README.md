@@ -25,7 +25,7 @@
 </center>
 
 Passive and active subdomain enumeration tool for OSINT and reconnaissance workflows.
-Built with async Python - queries **39 sources** (34 passive + 5 active) in parallel with no external shell dependencies.
+Built with async Python - queries **46 sources** (39 passive + 7 active) in parallel with no external shell dependencies.
 
 Techniques inspired by **subfinder**, **amass**, **puredns** and **subjack**:
 multi-probe wildcard detection, DNSSEC NSEC zone walking, TLS SAN extraction, SRV record mining, two-pass trusted-resolver validation, recursive enumeration, JavaScript link extraction, and subdomain-takeover fingerprinting.
@@ -113,11 +113,15 @@ API keys are stored in `config/api_keys.json` (gitignored to prevent leaks).
     "pulsedive_key":         "",
     "intelx_key":            "",
     "publicwww_key":         "",
-    "merklemap_key":         ""
+    "merklemap_key":         "",
+    "bevigil_key":           "",
+    "hunterhow_key":         "",
+    "circl_user":            "",
+    "circl_pass":            ""
 }
 ```
 
-Fill in the keys you have. Sources with empty keys still run if they support unauthenticated access (`hackertarget`, `urlscan`, `alienvault`, `dnsdumpster`, `commoncrawl`, `anubisdb`, `subdomaincenter`, `threatminer`, `fofa` free scrape). Sources marked as requiring a key return zero results when the key is missing.
+Fill in the keys you have. Sources with empty keys still run if they support unauthenticated access (`hackertarget`, `urlscan`, `alienvault`, `dnsdumpster`, `commoncrawl`, `anubisdb`, `subdomaincenter`, `threatminer`, `fofa` free scrape, `urlhaus`, `circl`, `bing`). Sources marked as requiring a key return zero results when the key is missing.
 
 **Where to get each key:**
 
@@ -144,6 +148,9 @@ Fill in the keys you have. Sources with empty keys still run if they support una
 | `intelx_key` | https://intelx.io/account?tab=developer |
 | `publicwww_key` | https://publicwww.com/api.html |
 | `merklemap_key` | https://www.merklemap.com/dashboard/api (paid subscription required) |
+| `bevigil_key` | https://bevigil.com/osint-api → Sign up |
+| `hunterhow_key` | https://hunter.how/api → Get API key |
+| `circl_user` / `circl_pass` | https://www.circl.lu/services/passive-dns/ → Request access (optional; free unauthenticated tier available) |
 
 ---
 
@@ -178,14 +185,14 @@ python simplerecon.py -d target.com --profile osint --verify-live
 
 ### OSINT Context Examples
 
-**Bug bounty — map external attack surface (passive only):**
+**Bug bounty - map external attack surface (passive only):**
 ```bash
 python simplerecon.py -d megacorp.com \
   --sources crtsh,virustotal,shodan,censys,github,chaos \
   --output json --outfile megacorp_subs.json
 ```
 
-**Full enumeration — passive + brute-force + live verification:**
+**Full enumeration - passive + brute-force + live verification:**
 ```bash
 python simplerecon.py -d target.com \
   --brute wordlists/subdomains-top1million-20000.txt \
@@ -207,7 +214,7 @@ python simplerecon.py -d target.com \
   --threads 40
 ```
 
-**Deep recon — include active sources and recursive enumeration:**
+**Deep recon - include active sources and recursive enumeration:**
 ```bash
 python simplerecon.py -d target.com \
   --sources crtsh,certspotter,github,chaos,nsec_walk,srv_enum \
@@ -227,7 +234,7 @@ python simplerecon.py -d target.com --sources nsec_walk -v
 python simplerecon.py -l scope.txt --output json --outfile all_subs.json --timeout 60
 ```
 
-**Quiet mode — pipe subdomains directly to another tool:**
+**Quiet mode - pipe subdomains directly to another tool:**
 ```bash
 python simplerecon.py -d target.com --no-banner | httpx -silent
 ```
@@ -239,9 +246,12 @@ python simplerecon.py -d target.com --no-banner | httpx -silent
 Target:
   -d DOMAIN              Single target domain
   -l FILE                File with one domain per line
+  --stdin                Read domains from stdin (one per line); enables pipe-friendly use
 
 Output:
-  -o {txt,json,csv}      Output format (default: txt)
+  -o {txt,json,csv,ndjson}
+                         Output format (default: txt).
+                         ndjson = one compact JSON line per subdomain - ideal for jq piping
   --outfile FILE         Write output to file
 
 Performance:
@@ -249,10 +259,16 @@ Performance:
   --timeout N            HTTP/DNS timeout in seconds (default: 30)
   --rate-limit N         Max concurrent HTTP requests per source (0 = unlimited)
 
+Network:
+  --proxy URL            Route all HTTP requests through a proxy
+                         (e.g. http://127.0.0.1:8080 or socks5://host:port)
+  --user-agent UA        Override User-Agent for all source HTTP requests
+
 Source control:
   --profile PROFILE      Run a predefined source group (fast, stealth, osint,
                          code, active, full). Overrides --sources.
   --sources LIST         Comma-separated sources (default: all)
+  --exclude LIST         Comma-separated sources to exclude (applied after --sources/--profile)
   --no-passive           Skip passive sources; run active/brute only
   --list-sources         Print all sources with descriptions and exit
   --list-profiles        Print all profiles with their source sets and exit
@@ -260,7 +276,7 @@ Source control:
 Brute-force:
   --brute WORDLIST       Wordlist path for DNS brute-force
   --resolvers FILE_OR_URL
-                         DNS resolver IPs — local file or https:// URL
+                         DNS resolver IPs - local file or https:// URL
                          (e.g. config/resolvers.txt or https://public-dns.info/nameservers-all.txt)
   --check-resolvers      Test each resolver against example.com before brute-force;
                          remove non-responsive ones (PureDNS technique)
@@ -302,11 +318,11 @@ python simplerecon.py -d target.com --profile fast
 
 | Profile | Description | Sources |
 |---|---|---|
-| `fast` | Quick scan — fastest no-auth sources only | `crtsh`, `certspotter`, `hackertarget`, `rapiddns`, `jldc`, `alienvault`, `anubisdb`, `subdomaincenter` |
-| `stealth` | Minimal footprint — passive only, rate-limited (`rate_limit=2`) | `crtsh`, `certspotter`, `wayback`, `commoncrawl`, `robtex`, `anubisdb` |
-| `osint` | Code repos + threat intel + CT logs + asset DBs | `crtsh`, `certspotter`, `alienvault`, `virustotal`, `shodan`, `github`, `grep_app`, `threatminer`, `anubisdb`, `subdomaincenter`, `hackertarget`, `rapiddns`, `urlscan` |
+| `fast` | Quick scan - fastest no-auth sources only | `crtsh`, `certspotter`, `hackertarget`, `rapiddns`, `jldc`, `alienvault`, `anubisdb`, `subdomaincenter`, `urlhaus`, `circl`, `bing` |
+| `stealth` | Minimal footprint - passive only, rate-limited (`rate_limit=2`) | `crtsh`, `certspotter`, `wayback`, `commoncrawl`, `robtex`, `anubisdb` |
+| `osint` | Code repos + threat intel + CT logs + asset DBs | `crtsh`, `certspotter`, `alienvault`, `virustotal`, `shodan`, `github`, `grep_app`, `threatminer`, `anubisdb`, `subdomaincenter`, `hackertarget`, `rapiddns`, `urlscan`, `bevigil`, `hunterhow`, `urlhaus`, `circl`, `bing` |
 | `code` | Code search only | `github`, `grep_app` |
-| `active` | Active techniques only | `zone_transfer`, `dns_mining`, `nsec_walk`, `srv_enum`, `js_scrape` |
+| `active` | Active techniques only | `zone_transfer`, `dns_mining`, `nsec_walk`, `srv_enum`, `js_scrape`, `ptr_sweep`, `vhost_probe` |
 | `full` | All available passive and active sources | `all` |
 
 Add or edit profiles by modifying [config/profiles.json](config/profiles.json):
@@ -339,11 +355,11 @@ Active sources **communicate directly with the target's DNS servers**. The targe
 
 | Module | What it does | Detection level |
 |---|---|---|
-| `zone_transfer` | AXFR attempt on all nameservers | **High** — connects to target NS |
-| `dns_mining` | SPF / DMARC / MX / TXT record queries | **Moderate** — DNS queries to target NS |
-| `nsec_walk` | DNSSEC NSEC chain walking to enumerate entire zone | **High** — queries authoritative NS directly |
-| `srv_enum` | SRV record enumeration for ~70 common service prefixes | **Moderate** — DNS queries to public resolvers |
-| `js_scrape` | Fetches the target's root HTML, downloads every linked `.js` file, and regex-extracts subdomains hardcoded in JS bundles | **High** — direct HTTP requests to target |
+| `zone_transfer` | AXFR attempt on all nameservers | **High** - connects to target NS |
+| `dns_mining` | SPF / DMARC / MX / TXT record queries | **Moderate** - DNS queries to target NS |
+| `nsec_walk` | DNSSEC NSEC chain walking to enumerate entire zone | **High** - queries authoritative NS directly |
+| `srv_enum` | SRV record enumeration for ~70 common service prefixes | **Moderate** - DNS queries to public resolvers |
+| `js_scrape` | Fetches the target's root HTML, downloads every linked `.js` file, and regex-extracts subdomains hardcoded in JS bundles | **High** - direct HTTP requests to target |
 
 Active modules are included in `--sources all`. To run them explicitly:
 
@@ -370,7 +386,7 @@ python simplerecon.py -d target.com --profile active
 python simplerecon.py --list-sources
 ```
 
-### Passive Sources (35)
+### Passive Sources (39)
 
 | Source | Requires key | Notes |
 |---|---|---|
@@ -378,14 +394,14 @@ python simplerecon.py --list-sources
 | `jldc` | No | Anubis subdomain DB |
 | `crtsh` | No | Certificate Transparency |
 | `certspotter` | No | Certificate Transparency |
-| `merklemap` | Required | CT log aggregator (alternative to crt.sh) — paid subscription required |
+| `merklemap` | Required | CT log aggregator (alternative to crt.sh) - paid subscription required |
 | `anubisdb` | No | jonlu.ca passive DNS subdomain database |
 | `subdomaincenter` | No | Netcraft-backed free subdomain index |
 | `threatminer` | No | ThreatMiner passive DNS / threat intel |
 | `urlscan` | Optional | Higher rate limit with key |
 | `hackertarget` | Optional | Higher rate limit with key |
 | `wayback` | No | web.archive.org CDX API (paginated, up to 200k entries) |
-| `commoncrawl` | No | Common Crawl CDX API — independent historical crawl data |
+| `commoncrawl` | No | Common Crawl CDX API - independent historical crawl data |
 | `robtex` | No | Passive DNS |
 | `alienvault` | Optional | OTX threat intelligence |
 | `bufferover` | No | Rapid7 FDNS via TLS |
@@ -408,8 +424,13 @@ python simplerecon.py --list-sources
 | `pulsedive` | Optional | Threat-intel observable lookup |
 | `intelx` | Required | IntelligenceX leaked data search |
 | `publicwww` | Required | Source-code search across the public web |
+| `bevigil` | Required | BeVigil OSINT - subdomains extracted from mobile apps |
+| `hunterhow` | Required | Hunter.how global asset database |
+| `urlhaus` | No | URLhaus abuse.ch malicious URL database - no auth needed |
+| `circl` | No (Optional Basic auth) | CIRCL Passive DNS - public free tier; key gives higher rate |
+| `bing` | No | Bing search - multi-template UA-rotating anti-bot scraping |
 
-### Active Sources (5)
+### Active Sources (7)
 
 | Source | Requires key | Notes |
 |---|---|---|
@@ -418,6 +439,8 @@ python simplerecon.py --list-sources
 | `nsec_walk` | No | DNSSEC NSEC zone walking |
 | `srv_enum` | No | SRV record enumeration (~70 service prefixes) |
 | `js_scrape` | No | Fetches target HTML + linked JS files, extracts subdomains via regex |
+| `ptr_sweep` | No | Reverse-DNS PTR sweep on /24 blocks containing target IPs |
+| `vhost_probe` | No | Virtual-host brute-force via HTTP Host-header fuzzing (130+ word built-in list) |
 
 <center>
 
@@ -462,7 +485,7 @@ python simplerecon.py -d target.com --brute wordlist.txt \
 python simplerecon.py -d target.com --brute wordlist.txt \
   --resolvers https://public-dns.info/nameservers-all.txt
 
-# With health check — filters dead resolvers before brute-force
+# With health check - filters dead resolvers before brute-force
 python simplerecon.py -d target.com --brute wordlist.txt \
   --resolvers https://public-dns.info/nameservers-all.txt \
   --check-resolvers
@@ -481,13 +504,13 @@ Other public resolver sources:
 ### Full Brute-force Example
 
 ```bash
-# Fast — bundled resolvers, no validation
+# Fast - bundled resolvers, no validation
 python simplerecon.py -d target.com \
   --brute wordlists/top5000.txt \
   --resolvers config/resolvers.txt \
   --threads 20
 
-# Thorough — community resolvers, health check, two-pass validation
+# Thorough - community resolvers, health check, two-pass validation
 python simplerecon.py -d target.com \
   --brute wordlists/subdomains-top1million-20000.txt \
   --resolvers https://public-dns.info/nameservers-all.txt \
@@ -528,7 +551,7 @@ python simplerecon.py -d target.com --verify-live --output json --outfile out.js
 
 ### DNSSEC NSEC Zone Walking (Amass)
 
-NSEC records form a sorted linked list of every name in the DNS zone. The `nsec_walk` source traverses the chain to enumerate the entire zone without a zone transfer. Works only when the domain uses **NSEC** (not NSEC3 — the module detects and reports this automatically).
+NSEC records form a sorted linked list of every name in the DNS zone. The `nsec_walk` source traverses the chain to enumerate the entire zone without a zone transfer. Works only when the domain uses **NSEC** (not NSEC3 - the module detects and reports this automatically).
 
 ```bash
 python simplerecon.py -d target.com --sources nsec_walk -v
@@ -543,7 +566,7 @@ Queries ~70 common SRV prefixes (`_http._tcp`, `_ldap._tcp`, `_kerberos._tcp`, `
 python simplerecon.py -d target.com --sources srv_enum -v
 ```
 
-The prefix list is in `config/srv_prefixes.json` — edit it to add domain-specific services.
+The prefix list is in `config/srv_prefixes.json` - edit it to add domain-specific services.
 
 ### Recursive Enumeration (Subfinder)
 
@@ -565,29 +588,51 @@ python simplerecon.py -d target.com --sources github -v
 
 ## Subdomain Takeover Detection
 
-When `--verify-live` is enabled, each HTTP response is matched against a built-in fingerprint database of ~30 takeover-vulnerable services (Subjack / can-i-take-over-xyz style). Detected services appear inline in the live output and in the JSON `takeover` field.
+When `--verify-live` is enabled, each live host is checked for takeover signals via **three independent methods**:
+
+| Method | How | Field |
+|---|---|---|
+| Body fingerprint | Response body matched against ~30 service signatures | `takeover` |
+| CNAME chain | Full CNAME chain walked; suffix matched against 21 services | `takeover: "cname:<service>"` |
+| WAF / CDN | Response headers fingerprinted against 11 providers | `waf` |
 
 ```bash
 python simplerecon.py -d target.com --verify-live -o json --outfile out.json
 ```
 
 ```
-[LIVE] orphan.target.com → 404 - NoSuchBucket [TAKEOVER? aws-s3]
-[LIVE] docs.target.com   → 404 - There isn't a GitHub Pages site here. [TAKEOVER? github-pages]
+[LIVE] orphan.target.com  → 404  - NoSuchBucket [TAKEOVER? aws-s3]
+[LIVE] docs.target.com    → 404  - There isn't a GitHub Pages site here. [TAKEOVER? cname:github-pages]
+[LIVE] api.target.com     → 200  - API Gateway [cloudflare]
 ```
 
-**Detected services include:**
+**Takeover-detectable services (body + CNAME):**
 
-`aws-s3`, `github-pages`, `heroku`, `netlify`, `fastly`, `shopify`, `tumblr`, `ghost-io`, `surge-sh`, `bitbucket`, `zendesk`, `freshdesk`, `sendgrid`, `squarespace`, `hubspot`, `readme-io`, `campaign-monitor`, `unbounce`, `webflow`, `pantheon`, `wpengine`, `cargo`, `helpjuice`, `helpscout`, `azure-blob`, `strikingly`, `wordpress-com`.
+`aws-s3`, `github-pages`, `heroku`, `netlify`, `fastly`, `shopify`, `ghost-io`, `surge-sh`, `zendesk`, `readme-io`, `unbounce`, `webflow`, `squarespace`, `hubspot`, `freshdesk`, `sendgrid`, `uservoice`, `wpengine`, `pantheon`, `teamwork`, `acquia`, `bigcartel`
 
-Fingerprints are defined inline in [verify/live_check.py](verify/live_check.py) (`_TAKEOVER_BODY` and `_TAKEOVER_HEADERS` dicts) — edit there to add new services.
+**WAF / CDN fingerprinting:**
 
-> **Note:** A positive match is a **candidate**, not a confirmed takeover. Always combine with a CNAME check (e.g. `dnsx -cname`) and verify ownership of the dangling resource before claiming.
+`cloudflare`, `akamai`, `fastly`, `cloudfront`, `incapsula`, `sucuri`, `azure-cdn`, `google`, `imperva`, `barracuda`, `f5-big-ip`
 
-### Chain with dnsx for verified takeover candidates
+All fingerprints are defined in [verify/live_check.py](verify/live_check.py) (`_TAKEOVER_CNAME`, `_TAKEOVER_BODY`, `_WAF_HEADERS`) - edit there to add new services.
+
+> **Note:** A positive match is a **candidate**, not a confirmed takeover. Always verify CNAME ownership before claiming.
+
+### jq recipes for takeover triage
 
 ```bash
-python simplerecon.py -d target.com --verify-live -o json --outfile out.json
+python simplerecon.py -d target.com --verify-live -o ndjson \
+  | jq 'select(.takeover != null)'
+
+# Only CNAME-based hits
+python simplerecon.py -d target.com --verify-live -o ndjson \
+  | jq 'select(.takeover | strings | startswith("cname:"))'
+
+# Show WAF-protected hosts
+python simplerecon.py -d target.com --verify-live -o ndjson \
+  | jq 'select(.waf != null) | {subdomain, waf, status}'
+
+# JSON outfile - extract takeover candidates
 jq -r '.live_hosts | to_entries[] | select(.value.takeover != null) | .key' out.json \
   | dnsx -silent -cname -resp
 ```
@@ -641,6 +686,8 @@ python simplerecon.py -d target.com --verify-live -o json --outfile results/targ
       "content_length": 1842,
       "url": "https://api.target.com",
       "tls_sans": ["api.target.com", "*.api.target.com", "cdn.target.com"],
+      "cname": null,
+      "waf": "cloudflare",
       "takeover": null
     },
     "orphan.target.com": {
@@ -650,7 +697,9 @@ python simplerecon.py -d target.com --verify-live -o json --outfile results/targ
       "content_length": 320,
       "url": "https://orphan.target.com",
       "tls_sans": [],
-      "takeover": "aws-s3"
+      "cname": "orphan.target.com.s3-website-us-east-1.amazonaws.com",
+      "waf": null,
+      "takeover": "cname:aws-s3"
     }
   },
   "sources": {
@@ -671,10 +720,41 @@ python simplerecon.py -d target.com --verify-live -o csv --outfile results/targe
 ```
 
 ```
-domain,subdomain,status,title,server,tls_sans,takeover
-target.com,api.target.com,200,API Gateway,nginx/1.24.0,api.target.com|*.api.target.com,
-target.com,mail.target.com,200,Webmail,Apache/2.4,,
-target.com,orphan.target.com,404,,AmazonS3,,aws-s3
+domain,subdomain,status,title,server,tls_sans,takeover,cname,waf
+target.com,api.target.com,200,API Gateway,nginx/1.24.0,api.target.com|*.api.target.com,,,cloudflare
+target.com,mail.target.com,200,Webmail,Apache/2.4,,,
+target.com,orphan.target.com,404,,AmazonS3,,cname:aws-s3,orphan.target.com.s3-website-us-east-1.amazonaws.com,
+```
+
+### NDJSON
+
+One compact JSON line per subdomain - designed for streaming and `jq` piping.
+
+```bash
+python simplerecon.py -d target.com --verify-live -o ndjson
+python simplerecon.py -d target.com --verify-live -o ndjson --outfile results/target.ndjson
+```
+
+```json
+{"domain": "target.com", "subdomain": "api.target.com", "status": 200, "title": "API Gateway", "server": "nginx/1.24.0", "waf": "cloudflare"}
+{"domain": "target.com", "subdomain": "orphan.target.com", "status": 404, "server": "AmazonS3", "cname": "orphan.target.com.s3-website-us-east-1.amazonaws.com", "takeover": "cname:aws-s3"}
+{"domain": "target.com", "subdomain": "dev.target.com"}
+```
+
+**jq examples:**
+
+```bash
+# Live hosts only
+python simplerecon.py -d target.com --verify-live -o ndjson | jq 'select(.status != null)'
+
+# Takeover candidates
+python simplerecon.py -d target.com --verify-live -o ndjson | jq 'select(.takeover != null)'
+
+# WAF-protected hosts
+python simplerecon.py -d target.com --verify-live -o ndjson | jq 'select(.waf != null) | {subdomain, waf}'
+
+# Extract only subdomains (pipe-friendly)
+python simplerecon.py -d target.com -o ndjson | jq -r '.subdomain'
 ```
 
 ### TXT
@@ -685,9 +765,50 @@ python simplerecon.py -d target.com -o txt --outfile results/target.txt
 
 ---
 
-## Chaining with Other Tools
+## Advanced Usage
 
-### httpx — HTTP probing
+### Proxy support
+
+Route all HTTP source requests through a proxy (Burp, mitmproxy, SOCKS5):
+
+```bash
+# HTTP/S proxy (e.g. Burp Suite)
+python simplerecon.py -d target.com --proxy http://127.0.0.1:8080
+
+# SOCKS5 proxy (e.g. Tor)
+python simplerecon.py -d target.com --proxy socks5://127.0.0.1:9050
+```
+
+### Custom User-Agent
+
+```bash
+python simplerecon.py -d target.com --user-agent 'Mozilla/5.0 (compatible; MyScanner/1.0)'
+```
+
+### Excluding sources
+
+```bash
+# Run everything except noisy/slow sources
+python simplerecon.py -d target.com --exclude github,intelx,publicwww
+
+# Profile with overrides
+python simplerecon.py -d target.com --profile osint --exclude merklemap,chaos
+```
+
+### Stdin / pipe targets
+
+```bash
+# Explicit flag
+echo 'target.com' | python simplerecon.py --stdin -o ndjson
+
+# Auto-detected when stdin is not a TTY
+cat domains.txt | python simplerecon.py -o txt
+
+# Chain with amass, subfinder, or other tools
+subfinder -silent -d target.com | python simplerecon.py --stdin --sources crtsh,virustotal
+```
+
+### httpx - HTTP probing
 
 ```bash
 python simplerecon.py -d target.com --no-banner | httpx -silent -status-code -title -tech-detect
@@ -696,14 +817,14 @@ python simplerecon.py -d target.com --no-banner | httpx -silent -status-code -ti
 python simplerecon.py -d target.com --no-banner | httpx -silent -mc 200
 ```
 
-### nmap — port scan
+### nmap - port scan
 
 ```bash
 python simplerecon.py -d target.com -o txt --outfile subs.txt
 nmap -iL subs.txt -p 80,443,8080,8443 -T4 --open
 ```
 
-### nuclei — vulnerability scanning
+### nuclei - vulnerability scanning
 
 ```bash
 python simplerecon.py -d target.com --no-banner \
@@ -711,7 +832,7 @@ python simplerecon.py -d target.com --no-banner \
   | nuclei -t cves/ -silent
 ```
 
-### dnsx — DNS resolution and CNAME chasing
+### dnsx - DNS resolution and CNAME chasing
 
 ```bash
 # Find potential subdomain takeovers
@@ -720,14 +841,14 @@ python simplerecon.py -d target.com --no-banner \
   | grep -E 'amazonaws|azurewebsites|github.io|herokuapp'
 ```
 
-### eyewitness — screenshots
+### eyewitness - screenshots
 
 ```bash
 python simplerecon.py -d target.com --verify-live -o txt --outfile subs.txt
 eyewitness --web -f subs.txt --no-prompt -d screenshots/
 ```
 
-### SimpleReconSubdomain — enrichment and automation
+### SimpleReconSubdomain - enrichment and automation
 
 [SimpleReconSubdomain](https://github.com/MrCl0wnLab/SimpleReconSubdomain) (`String-x (aka strx)`) is a modular automation tool using a `{STRING}` placeholder. It pairs naturally with SimpleReconSubdomain via pipes.
 
@@ -755,7 +876,7 @@ python simplerecon.py -d target.com --no-banner \
 
 ## Creating a New Module
 
-All sources inherit from `BaseSource` in `sources/base.py`. Drop the file in `sources/passive/` or `sources/active/` — no other file needs editing.
+All sources inherit from `BaseSource` in `sources/base.py`. Drop the file in `sources/passive/` or `sources/active/` - no other file needs editing.
 
 The class name must be the **title-cased filename** (e.g. `myservice.py` → class `Myservice`), and `NAME` must equal the filename without `.py`.
 
@@ -833,7 +954,7 @@ class Myactive(BaseSource):
 
 ## 📄 LICENÇA
 
-Este projeto está licenciado sob a Licença Apache — veja o arquivo [LICENSE](LICENSE) para detalhes.
+Este projeto está licenciado sob a Licença Apache - veja o arquivo [LICENSE](LICENSE) para detalhes.
 
 ## 👨‍💻 AUTOR
 

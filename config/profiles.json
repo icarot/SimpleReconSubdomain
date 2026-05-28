@@ -1,7 +1,7 @@
 {
     "fast": {
         "description": "Quick scan — fastest no-auth sources only",
-        "sources": ["crtsh", "certspotter", "hackertarget", "rapiddns", "jldc", "alienvault", "anubisdb", "subdomaincenter"],
+        "sources": ["crtsh", "certspotter", "hackertarget", "rapiddns", "jldc", "alienvault", "anubisdb", "subdomaincenter", "urlhaus", "circl", "bing"],
         "options": {}
     },
     "stealth": {
@@ -15,7 +15,8 @@
             "crtsh", "certspotter", "alienvault", "virustotal", "shodan",
             "github", "grep_app",
             "threatminer", "anubisdb", "subdomaincenter",
-            "hackertarget", "rapiddns", "urlscan"
+            "hackertarget", "rapiddns", "urlscan",
+            "bevigil", "hunterhow", "urlhaus", "circl", "bing"
         ],
         "options": {}
     },
@@ -25,8 +26,8 @@
         "options": {}
     },
     "active": {
-        "description": "Active techniques only — DNS mining, zone transfer, SRV, JS scraping",
-        "sources": ["zone_transfer", "dns_mining", "nsec_walk", "srv_enum", "js_scrape"],
+        "description": "Active techniques only — DNS mining, zone transfer, SRV, JS scraping, PTR sweep, vhost probing",
+        "sources": ["zone_transfer", "dns_mining", "nsec_walk", "srv_enum", "js_scrape", "ptr_sweep", "vhost_probe"],
         "options": {}
     },
     "full": {

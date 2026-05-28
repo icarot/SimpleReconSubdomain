@@ -75,13 +75,18 @@ def build_parser() -> argparse.ArgumentParser:
     target_group.add_argument(
         '-l', '--list', metavar='FILE', help='File with list of target domains'
     )
+    target_group.add_argument(
+        '--stdin',
+        action='store_true',
+        help='Read target domains from stdin (one per line); enables pipe-friendly use',
+    )
 
     # Output
     parser.add_argument(
         '-o', '--output',
-        choices=['txt', 'json', 'csv'],
+        choices=['txt', 'json', 'csv', 'ndjson'],
         default='txt',
-        help='Output format (default: txt)',
+        help='Output format (default: txt). ndjson = one JSON line per subdomain, ideal for piping',
     )
     parser.add_argument('--outfile', metavar='FILE', help='Write output to file')
 
@@ -117,6 +122,11 @@ def build_parser() -> argparse.ArgumentParser:
         '--sources',
         metavar='SOURCES',
         help=f'Comma-separated sources to use (default: all). Available: {", ".join(ALL_SOURCES)}',
+    )
+    parser.add_argument(
+        '--exclude',
+        metavar='SOURCES',
+        help='Comma-separated sources to exclude. Applied after --sources/--profile selection',
     )
     parser.add_argument(
         '--no-passive',
@@ -223,6 +233,19 @@ def build_parser() -> argparse.ArgumentParser:
         '--no-color',
         action='store_true',
         help='Disable ANSI color output',
+    )
+
+    # Network / proxy
+    parser.add_argument(
+        '--proxy',
+        metavar='URL',
+        help='Route all HTTP requests through this proxy (e.g. http://127.0.0.1:8080 or socks5://host:port)',
+    )
+    parser.add_argument(
+        '--user-agent',
+        metavar='UA',
+        default='SimpleReconSubdomain/2',
+        help='Override the HTTP User-Agent header sent by all sources (default: SimpleReconSubdomain/2)',
     )
 
     return parser

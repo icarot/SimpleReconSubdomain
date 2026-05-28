@@ -19,6 +19,8 @@ def save_output(
 
     *results* is a list of per-domain dicts with keys:
         domain, subdomains (set), live (dict), sources (dict)
+
+    Formats: txt, json, csv, ndjson
     """
     segments: list[str] = []
 
@@ -30,7 +32,6 @@ def save_output(
         timestamp = datetime.now().isoformat()
 
         if fmt == 'json':
-            # Build live_hosts with tls_sans included when available
             live_hosts: dict = {}
             for sub, info in live.items():
                 if info.get('status') is not None:
@@ -44,6 +45,12 @@ def save_output(
                     sans = info.get('tls_sans', [])
                     if sans:
                         entry['tls_sans'] = sans
+                    if info.get('takeover'):
+                        entry['takeover'] = info['takeover']
+                    if info.get('cname'):
+                        entry['cname'] = info['cname']
+                    if info.get('waf'):
+                        entry['waf'] = info['waf']
                     live_hosts[sub] = entry
 
             data = {
@@ -60,7 +67,8 @@ def save_output(
             buf = io.StringIO()
             writer = csv.DictWriter(
                 buf,
-                fieldnames=['domain', 'subdomain', 'status', 'title', 'server', 'tls_sans'],
+                fieldnames=['domain', 'subdomain', 'status', 'title', 'server',
+                            'tls_sans', 'takeover', 'cname', 'waf'],
             )
             writer.writeheader()
             for sub in sorted(subdomains):
@@ -73,8 +81,32 @@ def save_output(
                     'title': live_info.get('title', ''),
                     'server': live_info.get('server', ''),
                     'tls_sans': '|'.join(sans) if sans else '',
+                    'takeover': live_info.get('takeover', ''),
+                    'cname': live_info.get('cname', ''),
+                    'waf': live_info.get('waf', ''),
                 })
             segments.append(buf.getvalue())
+
+        elif fmt == 'ndjson':
+            # One compact JSON line per subdomain — pipe-friendly
+            for sub in sorted(subdomains):
+                live_info = live.get(sub, {})
+                record: dict = {'domain': domain, 'subdomain': sub}
+                if live_info.get('status') is not None:
+                    record['status'] = live_info['status']
+                    if live_info.get('title'):
+                        record['title'] = live_info['title']
+                    if live_info.get('server'):
+                        record['server'] = live_info['server']
+                    if live_info.get('tls_sans'):
+                        record['tls_sans'] = live_info['tls_sans']
+                    if live_info.get('takeover'):
+                        record['takeover'] = live_info['takeover']
+                    if live_info.get('cname'):
+                        record['cname'] = live_info['cname']
+                    if live_info.get('waf'):
+                        record['waf'] = live_info['waf']
+                segments.append(json.dumps(record))
 
         else:  # txt (default)
             segments.append('\n'.join(sorted(subdomains)))
@@ -85,6 +117,8 @@ def save_output(
         try:
             with open(outfile, 'w') as fh:
                 fh.write(output)
+                if fmt != 'ndjson':
+                    fh.write('\n')
             if not quiet:
                 print(colors.format_msg(f'\n[+] Output saved to: {outfile}'))
         except OSError as exc:

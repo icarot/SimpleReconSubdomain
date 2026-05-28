@@ -66,7 +66,7 @@ def main() -> None:
         print_examples()
         sys.exit(0)
 
-    if not args.domain and not args.list:
+    if not args.domain and not args.list and not getattr(args, 'stdin', False) and sys.stdin.isatty():
         parser.print_help()
         sys.exit(1)
 

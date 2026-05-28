@@ -21,7 +21,7 @@ ALL_PASSIVE_SOURCES: dict = PASSIVE_SOURCES
 ALL_ACTIVE_SOURCES: dict  = ACTIVE_SOURCES
 
 
-def load_targets(domain: str | None = None, list_file: str | None = None) -> list[str]:
+def load_targets(domain: str | None = None, list_file: str | None = None, stdin: bool = False) -> list[str]:
     targets: list[str] = []
     if domain:
         targets.append(domain.strip().lower())
@@ -35,6 +35,11 @@ def load_targets(domain: str | None = None, list_file: str | None = None) -> lis
         except FileNotFoundError:
             print(colors.format_msg(f'[!] File not found: {list_file}'))
             sys.exit(1)
+    if stdin or (not domain and not list_file and not sys.stdin.isatty()):
+        for line in sys.stdin:
+            line = line.strip()
+            if line and not line.startswith('#'):
+                targets.append(line.lower())
 
     valid: list[str] = []
     seen: set[str] = set()
@@ -162,25 +167,39 @@ class Engine:
             profile = get_profile(profile_name)
             if profile is None:
                 self.log(f'[!] Unknown profile: {profile_name!r} — running all sources')
-                return ALL_PASSIVE_SOURCES, ALL_ACTIVE_SOURCES
-            sources = profile.get('sources', 'all')
-            # Apply profile-level option defaults (only if not explicitly set by CLI)
-            opts = profile_options(profile_name)
-            if opts.get('rate_limit') and not getattr(self.args, 'rate_limit', None):
-                self.args.rate_limit = opts['rate_limit']
-            if sources == 'all' or sources is None:
-                return ALL_PASSIVE_SOURCES, ALL_ACTIVE_SOURCES
-            requested = set(sources)
+                passive, active = ALL_PASSIVE_SOURCES, ALL_ACTIVE_SOURCES
+            else:
+                sources = profile.get('sources', 'all')
+                # Apply profile-level option defaults (only if not explicitly set by CLI)
+                opts = profile_options(profile_name)
+                if opts.get('rate_limit') and not getattr(self.args, 'rate_limit', None):
+                    self.args.rate_limit = opts['rate_limit']
+                if sources == 'all' or sources is None:
+                    passive, active = ALL_PASSIVE_SOURCES, ALL_ACTIVE_SOURCES
+                else:
+                    requested = set(sources)
+                    passive = {k: v for k, v in ALL_PASSIVE_SOURCES.items() if k in requested}
+                    active = {k: v for k, v in ALL_ACTIVE_SOURCES.items() if k in requested}
         elif self.args.sources:
             requested = {s.strip() for s in self.args.sources.split(',')}
+            passive = {k: v for k, v in ALL_PASSIVE_SOURCES.items() if k in requested}
+            active = {k: v for k, v in ALL_ACTIVE_SOURCES.items() if k in requested}
+            unknown = requested - set(ALL_PASSIVE_SOURCES) - set(ALL_ACTIVE_SOURCES)
+            for name in sorted(unknown):
+                self.log(f'[!] Unknown source: {name!r} — skipping')
         else:
-            return ALL_PASSIVE_SOURCES, ALL_ACTIVE_SOURCES
+            passive, active = ALL_PASSIVE_SOURCES, ALL_ACTIVE_SOURCES
 
-        passive = {k: v for k, v in ALL_PASSIVE_SOURCES.items() if k in requested}
-        active = {k: v for k, v in ALL_ACTIVE_SOURCES.items() if k in requested}
-        unknown = requested - set(ALL_PASSIVE_SOURCES) - set(ALL_ACTIVE_SOURCES)
-        for name in sorted(unknown):
-            self.log(f'[!] Unknown source: {name!r} — skipping')
+        # Apply --exclude (works regardless of how sources were selected)
+        exclude = {
+            s.strip()
+            for s in (getattr(self.args, 'exclude', '') or '').split(',')
+            if s.strip()
+        }
+        if exclude:
+            passive = {k: v for k, v in passive.items() if k not in exclude}
+            active = {k: v for k, v in active.items() if k not in exclude}
+
         return passive, active
 
     # ------------------------------------------------------------------
@@ -225,17 +244,24 @@ class Engine:
         source_counts: dict = {}
         passive_sources, active_sources = self._select_sources()
         rate_limit: int = getattr(self.args, 'rate_limit', 0) or 0
+        proxy: str | None = getattr(self.args, 'proxy', None)
+        user_agent: str = getattr(self.args, 'user_agent', 'SimpleReconSubdomain/2') or 'SimpleReconSubdomain/2'
         resolvers: list[str] = []  # shared across brute-force and permutation
+
+        def _make_source(cls):
+            return cls(
+                timeout=self.args.timeout,
+                rate_limit=rate_limit,
+                verbose=self.verbose,
+                proxy=proxy,
+                user_agent=user_agent,
+            )
 
         # ── Passive sources ──────────────────────────────────────────
         if not self.args.no_passive:
             self.log('[*] Running passive sources...')
             tasks = [
-                self._run_source(
-                    name,
-                    cls(timeout=self.args.timeout, rate_limit=rate_limit, verbose=self.verbose),
-                    target, dedup, source_counts,
-                )
+                self._run_source(name, _make_source(cls), target, dedup, source_counts)
                 for name, cls in passive_sources.items()
             ]
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -244,11 +270,7 @@ class Engine:
         if active_sources:
             self.log('[*] Running active sources...')
             active_tasks = [
-                self._run_source(
-                    name,
-                    cls(timeout=self.args.timeout, rate_limit=rate_limit, verbose=self.verbose),
-                    target, dedup, source_counts,
-                )
+                self._run_source(name, _make_source(cls), target, dedup, source_counts)
                 for name, cls in active_sources.items()
             ]
             await asyncio.gather(*active_tasks, return_exceptions=True)
@@ -444,6 +466,7 @@ class Engine:
         targets = load_targets(
             domain=self.args.domain,
             list_file=self.args.list,
+            stdin=getattr(self.args, 'stdin', False),
         )
 
         if not targets:

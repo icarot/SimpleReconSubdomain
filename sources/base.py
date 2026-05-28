@@ -1,7 +1,11 @@
 import asyncio
 from abc import ABC, abstractmethod
 
+import httpx
+
 import core.colors as colors
+
+_DEFAULT_UA = 'SimpleReconSubdomain/2'
 
 
 class BaseSource(ABC):
@@ -9,14 +13,43 @@ class BaseSource(ABC):
     DESCRIPTION: str = ''
     API_TOKEN_IS_REQUIREMENT: bool = False
 
-    def __init__(self, timeout: int = 30, rate_limit: int = 0, verbose: int = 0) -> None:
+    def __init__(
+        self,
+        timeout: int = 30,
+        rate_limit: int = 0,
+        verbose: int = 0,
+        proxy: str | None = None,
+        user_agent: str = _DEFAULT_UA,
+    ) -> None:
         self.timeout = timeout
         self.rate_limit = rate_limit
         self.verbose = verbose
+        self.proxy = proxy
+        self.user_agent = user_agent
         # Semaphore to cap concurrent requests per source (0 = unlimited)
         self._sem: asyncio.Semaphore | None = (
             asyncio.Semaphore(rate_limit) if rate_limit > 0 else None
         )
+
+    def _make_client(self, **kwargs) -> httpx.AsyncClient:
+        """
+        Return a pre-configured AsyncClient with proxy and User-Agent applied.
+
+        Callers can override any default by passing kwargs; 'headers' are
+        merged (caller values win) rather than replaced.
+        """
+        merged_headers: dict = {'User-Agent': self.user_agent}
+        if 'headers' in kwargs:
+            merged_headers.update(kwargs.pop('headers'))
+        client_kwargs: dict = {
+            'timeout': self.timeout,
+            'follow_redirects': True,
+            'headers': merged_headers,
+        }
+        if self.proxy:
+            client_kwargs['proxy'] = self.proxy
+        client_kwargs.update(kwargs)
+        return httpx.AsyncClient(**client_kwargs)
 
     def _vlog(self, level: int, msg: str) -> None:
         """Print *msg* when self.verbose >= *level*."""
