@@ -144,7 +144,7 @@ Fill in the keys you have. Sources with empty keys still run if they support una
 | `pulsedive_key` | https://pulsedive.com/api/ |
 | `intelx_key` | https://intelx.io/account?tab=developer |
 | `publicwww_key` | https://publicwww.com/api.html |
-| `gitlab_token` | https://gitlab.com/-/profile/personal_access_tokens (scope: `read_api`) |
+| `gitlab_token` | https://gitlab.com/-/user_settings/personal_access_tokens/legacy/new (scope: `read_api`) |
 | `merklemap_key` | https://www.merklemap.com/dashboard/api (paid subscription required) |
 
 ---
