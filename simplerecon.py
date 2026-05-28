@@ -16,7 +16,7 @@
 import asyncio
 import sys
 
-from cli.parser import build_parser, print_sources
+from cli.parser import build_parser, print_sources, print_profiles, print_examples
 from core.engine import Engine
 import core.colors as colors
 
@@ -56,6 +56,14 @@ def main() -> None:
 
     if args.list_sources:
         print_sources()
+        sys.exit(0)
+
+    if args.list_profiles:
+        print_profiles()
+        sys.exit(0)
+
+    if args.list_examples:
+        print_examples()
         sys.exit(0)
 
     if not args.domain and not args.list:

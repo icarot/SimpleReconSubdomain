@@ -19,6 +19,65 @@ import httpx
 import core.colors as colors
 
 
+# ---------------------------------------------------------------------------
+# Subdomain-takeover fingerprints
+# Each value is a list of lowercase body substrings. If ANY matches,
+# the service is considered a takeover candidate.
+# ---------------------------------------------------------------------------
+_TAKEOVER_BODY: dict[str, list[str]] = {
+    'aws-s3':            ['nosuchbucket', 'the specified bucket does not exist',
+                          'nosuchkey'],
+    'github-pages':      ["there isn't a github pages site here",
+                          "for root urls (like http://example.com/) you must provide an index.html"],
+    'heroku':            ['no such app', 'herokucdn.com/error-pages/no-such-app',
+                          'there is no app configured at that hostname'],
+    'netlify':           ['not found - request id:'],
+    'fastly':            ['fastly error: unknown domain:'],
+    'shopify':           ['sorry, this shop is currently unavailable',
+                          'this shop is unavailable'],
+    'tumblr':            ["there's nothing here.", 'whatever you were looking for doesn'],
+    'ghost-io':          ['the thing you were looking for is no longer here'],
+    'surge-sh':          ['project not found'],
+    'bitbucket':         ['repository not found'],
+    'zendesk':           ['help center closed', 'is not a valid subdomain'],
+    'freshdesk':         ['may not exist, may have been removed, or the name'],
+    'sendgrid':          ['the cname you entered does not point to sendgrid'],
+    'squarespace':       ['no such account'],
+    'hubspot':           ['domain not configured', 'does not exist in our system'],
+    'readme-io':         ["project doesnt exist... yet!"],
+    'campaign-monitor':  ['double check the url or'],
+    'unbounce':          ['the requested url was not found on this server'],
+    'webflow':           ["the page you are looking for doesn't exist"],
+    'pantheon':          ['404 error unknown site!', '404 error: unknown site!'],
+    'wpengine':          ["the site you were looking for couldn't be found"],
+    'cargo':             ['cargocollective.com'],
+    'helpjuice':         ['we could not find what you\u2019re looking for'],
+    'helpscout':         ['no settings were found for this company'],
+    'azure-blob':        ['<code>noresourceassociated</code>'],
+    'strikingly':        ['page not found on strikingly'],
+    'wordpress-com':     ['do you want to register'],
+}
+
+# Header-based fingerprints: {service: [(header_name, contains_substring)]}
+_TAKEOVER_HEADERS: dict[str, list[tuple[str, str]]] = {
+    'fastly':       [('x-served-by', 'cache-')],
+    'github-pages': [('server', 'github.com')],
+}
+
+
+def _detect_takeover(body: str, headers: dict) -> str | None:
+    """Return the service name if the response matches a takeover fingerprint, else None."""
+    body_lower = body.lower()
+    for service, patterns in _TAKEOVER_BODY.items():
+        if any(p in body_lower for p in patterns):
+            return service
+    for service, hdr_checks in _TAKEOVER_HEADERS.items():
+        for hdr_name, hdr_sub in hdr_checks:
+            if hdr_sub in headers.get(hdr_name, '').lower():
+                return service
+    return None
+
+
 async def verify_live(
     subdomains: set[str],
     timeout: int = 5,
@@ -59,6 +118,7 @@ async def verify_live(
                             'server': resp.headers.get('server', ''),
                             'content_length': len(resp.content),
                             'tls_sans': [],
+                            'takeover': _detect_takeover(resp.text, dict(resp.headers)),
                         }
 
                         # Extract TLS SANs when connecting over HTTPS
@@ -73,8 +133,9 @@ async def verify_live(
                             title = entry['title']
                             title_str = f' - {title}' if title else ''
                             san_str = f' [{len(entry["tls_sans"])} SANs]' if entry['tls_sans'] else ''
+                            takeover_str = f' [TAKEOVER? {entry["takeover"]}]' if entry['takeover'] else ''
                             print(colors.format_msg(
-                                f'[LIVE] {sub} → {resp.status_code}{title_str}{san_str}'
+                                f'[LIVE] {sub} → {resp.status_code}{title_str}{san_str}{takeover_str}'
                             ))
                         return
                     except Exception:
@@ -82,7 +143,7 @@ async def verify_live(
                             https_ok = False
 
                 if not https_ok:
-                    results[sub] = {'url': None, 'status': None, 'tls_sans': []}
+                    results[sub] = {'url': None, 'status': None, 'tls_sans': [], 'takeover': None}
 
         await asyncio.gather(*[check(sub) for sub in subdomains])
     return results

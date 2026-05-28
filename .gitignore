@@ -29,7 +29,8 @@ MANIFEST
 
 # DEV SYSTEM
 config/dev_api_keys.json
-
+.github/
+.claude/
 
 # Arquivos de log
 *.log

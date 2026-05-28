@@ -1,0 +1,37 @@
+{
+    "fast": {
+        "description": "Quick scan — fastest no-auth sources only",
+        "sources": ["crtsh", "certspotter", "hackertarget", "rapiddns", "jldc", "alienvault", "anubisdb", "subdomaincenter"],
+        "options": {}
+    },
+    "stealth": {
+        "description": "Minimal footprint — passive only, rate-limited to avoid detection",
+        "sources": ["crtsh", "certspotter", "wayback", "commoncrawl", "robtex", "anubisdb"],
+        "options": {"rate_limit": 2}
+    },
+    "osint": {
+        "description": "OSINT-focused — code repos, threat intel, CT logs, and asset databases",
+        "sources": [
+            "crtsh", "certspotter", "alienvault", "virustotal", "shodan",
+            "github", "grep_app", "gitlab",
+            "threatminer", "anubisdb", "subdomaincenter",
+            "hackertarget", "rapiddns", "urlscan"
+        ],
+        "options": {}
+    },
+    "code": {
+        "description": "Code search only — GitHub, GitLab, grep.app",
+        "sources": ["github", "grep_app", "gitlab"],
+        "options": {}
+    },
+    "active": {
+        "description": "Active techniques only — DNS mining, zone transfer, SRV, JS scraping",
+        "sources": ["zone_transfer", "dns_mining", "nsec_walk", "srv_enum", "js_scrape"],
+        "options": {}
+    },
+    "full": {
+        "description": "All available passive and active sources",
+        "sources": "all",
+        "options": {}
+    }
+}

@@ -9,6 +9,7 @@ import httpx
 
 import core.colors as colors
 from core.dedup import DeduplicatedSet
+from core.profiles import get_profile, profile_options
 from sources import PASSIVE_SOURCES, ACTIVE_SOURCES
 from output.formatter import save_output
 
@@ -155,10 +156,26 @@ class Engine:
     # ------------------------------------------------------------------
 
     def _select_sources(self) -> tuple[dict, dict]:
-        if not self.args.sources:
+        # --profile takes precedence over --sources
+        profile_name: str | None = getattr(self.args, 'profile', None)
+        if profile_name:
+            profile = get_profile(profile_name)
+            if profile is None:
+                self.log(f'[!] Unknown profile: {profile_name!r} — running all sources')
+                return ALL_PASSIVE_SOURCES, ALL_ACTIVE_SOURCES
+            sources = profile.get('sources', 'all')
+            # Apply profile-level option defaults (only if not explicitly set by CLI)
+            opts = profile_options(profile_name)
+            if opts.get('rate_limit') and not getattr(self.args, 'rate_limit', None):
+                self.args.rate_limit = opts['rate_limit']
+            if sources == 'all' or sources is None:
+                return ALL_PASSIVE_SOURCES, ALL_ACTIVE_SOURCES
+            requested = set(sources)
+        elif self.args.sources:
+            requested = {s.strip() for s in self.args.sources.split(',')}
+        else:
             return ALL_PASSIVE_SOURCES, ALL_ACTIVE_SOURCES
 
-        requested = {s.strip() for s in self.args.sources.split(',')}
         passive = {k: v for k, v in ALL_PASSIVE_SOURCES.items() if k in requested}
         active = {k: v for k, v in ALL_ACTIVE_SOURCES.items() if k in requested}
         unknown = requested - set(ALL_PASSIVE_SOURCES) - set(ALL_ACTIVE_SOURCES)

@@ -1,5 +1,6 @@
 import argparse
 
+from core.profiles import load_profiles, profile_names
 from sources import PASSIVE_SOURCES, ACTIVE_SOURCES
 
 # Built dynamically from the auto-discovered source modules
@@ -48,24 +49,15 @@ def build_parser() -> argparse.ArgumentParser:
         f'{C.bold(C.white("SimpleReconSubdomain v2"))}'
         ' - Passive + Active subdomain enumeration'
     )
-    _epilog_raw = (
-        '\nexamples:\n'
-        '  python simplerecon.py -d target.com\n'
-        '  python simplerecon.py -l domains.txt\n'
-        '  python simplerecon.py -d target.com --brute wordlist.txt --threads 20\n'
-        '  python simplerecon.py -d target.com --sources crtsh,hackertarget,wayback\n'
-        '  python simplerecon.py -d target.com --output json --outfile result.json\n'
-        '  python simplerecon.py -d target.com --verify-live --timeout 10\n'
-        '  python simplerecon.py -d target.com --permute\n'
-        '  python simplerecon.py -d target.com --brute wordlist.txt --resolvers config/resolvers.txt\n'
-        '  python simplerecon.py -d target.com --brute wordlist.txt --resolvers https://public-dns.info/nameservers-all.txt --check-resolvers\n'
-        '  python simplerecon.py --list-sources\n'
-    )
-    epilog = '\n'.join(
-        line.replace('examples:', C.bold(C.cyan('examples:'))) if 'examples:' in line
-        else C.gray(line) if line.startswith('  python')
-        else line
-        for line in _epilog_raw.split('\n')
+    epilog = (
+        f'{C.bold(C.cyan("quick start:"))}\n'
+        f'  {C.gray("python simplerecon.py -d target.com --profile fast")}\n'
+        f'  {C.gray("python simplerecon.py -d target.com --profile osint --verify-live")}\n'
+        f'\n'
+        f'{C.bold(C.cyan("see more:"))}\n'
+        f'  {C.gray("python simplerecon.py --list-sources")}    {C.gray("# all sources")}\n'
+        f'  {C.gray("python simplerecon.py --list-profiles")}   {C.gray("# curated source groups")}\n'
+        f'  {C.gray("python simplerecon.py --list-examples")}   {C.gray("# usage examples + tool chaining")}\n'
     )
 
     parser = argparse.ArgumentParser(
@@ -113,6 +105,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     # Source control
     parser.add_argument(
+        '--profile',
+        metavar='PROFILE',
+        help=(
+            'Run a predefined source group. Available: '
+            + ', '.join(profile_names())
+            + '. Overrides --sources if both are given.'
+        ),
+    )
+    parser.add_argument(
         '--sources',
         metavar='SOURCES',
         help=f'Comma-separated sources to use (default: all). Available: {", ".join(ALL_SOURCES)}',
@@ -126,6 +127,16 @@ def build_parser() -> argparse.ArgumentParser:
         '--list-sources',
         action='store_true',
         help='List all available sources and exit',
+    )
+    parser.add_argument(
+        '--list-profiles',
+        action='store_true',
+        help='List all available profiles and exit',
+    )
+    parser.add_argument(
+        '--list-examples',
+        action='store_true',
+        help='Print categorized usage examples (incl. tool chaining) and exit',
     )
 
     # Brute-force
@@ -235,3 +246,167 @@ def print_sources() -> None:
     for cls in ACTIVE_SOURCES.values():
         print(f'    {C.cyan(f"{cls.NAME:<16}")} {cls.DESCRIPTION}')
     print()
+
+
+def print_profiles() -> None:
+    import core.colors as C
+
+    profiles = load_profiles()
+    if not profiles:
+        print('No profiles found.')
+        return
+
+    print(f'\n{C.bold(C.white("Available profiles:"))}\n')
+    for name, cfg in profiles.items():
+        sources = cfg.get('sources', 'all')
+        if isinstance(sources, list):
+            src_str = ', '.join(sources)
+        else:
+            src_str = str(sources)
+        opts = cfg.get('options', {})
+        opts_str = f'  {C.gray(str(opts))}' if opts else ''
+        print(f'  {C.cyan(f"{name:<12}")} {cfg.get("description", "")}')
+        print(f'  {" " * 12} {C.gray("sources:")} {src_str}{opts_str}')
+    print()
+
+
+# ---------------------------------------------------------------------------
+# Categorized usage examples (printed via --list-examples)
+# ---------------------------------------------------------------------------
+_EXAMPLES: list[tuple[str, list[str]]] = [
+    ('Basics', [
+        'python simplerecon.py -d target.com',
+        'python simplerecon.py -l domains.txt',
+        'python simplerecon.py --list-sources',
+        'python simplerecon.py --list-profiles',
+        'python simplerecon.py --list-examples',
+    ]),
+    ('Profiles (curated source groups)', [
+        'python simplerecon.py -d target.com --profile fast',
+        'python simplerecon.py -d target.com --profile stealth --verify-live',
+        'python simplerecon.py -d target.com --profile osint --output json --outfile osint.json',
+        'python simplerecon.py -d target.com --profile code -v 2',
+        'python simplerecon.py -d target.com --profile active --no-passive',
+        'python simplerecon.py -d target.com --profile full --recursive --recursive-depth 2',
+    ]),
+    ('Custom source selection', [
+        'python simplerecon.py -d target.com --sources crtsh,hackertarget,wayback',
+        'python simplerecon.py -d target.com --sources github,gitlab,grep_app',
+        'python simplerecon.py -d target.com --sources nsec_walk,srv_enum,js_scrape',
+        'python simplerecon.py -d target.com --sources anubisdb,merklemap,subdomaincenter,threatminer',
+    ]),
+    ('Output formats', [
+        'python simplerecon.py -d target.com --output json --outfile result.json',
+        'python simplerecon.py -d target.com --output csv  --outfile result.csv',
+        'python simplerecon.py -d target.com --output txt  --outfile result.txt',
+        'python simplerecon.py -d target.com --no-banner > subs.txt',
+    ]),
+    ('Performance & rate-limiting', [
+        'python simplerecon.py -d target.com --threads 20',
+        'python simplerecon.py -d target.com --rate-limit 5 --timeout 15',
+        'python simplerecon.py -d target.com --profile osint --rate-limit 3',
+        'python simplerecon.py -l domains.txt --threads 40 --timeout 60',
+    ]),
+    ('Live verification (HTTP + TLS SAN + takeover detection)', [
+        'python simplerecon.py -d target.com --verify-live --timeout 10',
+        'python simplerecon.py -d target.com --profile fast --verify-live -o json --outfile live.json',
+        'python simplerecon.py -d target.com --verify-live -o csv --outfile live.csv',
+    ]),
+    ('DNS brute-force', [
+        'python simplerecon.py -d target.com --brute wordlist.txt --threads 20',
+        'python simplerecon.py -d target.com --brute wordlist.txt --resolvers config/resolvers.txt',
+        'python simplerecon.py -d target.com --brute wordlist.txt \\\n       --resolvers https://public-dns.info/nameservers-all.txt --check-resolvers',
+        'python simplerecon.py -d target.com --brute wordlist.txt --wildcard-tests 5 --validate-resolvers',
+        'python simplerecon.py -d target.com --no-passive --brute wordlist.txt',
+    ]),
+    ('Permutations and recursive enumeration', [
+        'python simplerecon.py -d target.com --permute',
+        'python simplerecon.py -d target.com --recursive --recursive-depth 2',
+        'python simplerecon.py -d target.com --recursive --recursive-depth 2 --verify-live',
+    ]),
+    ('Debug & verbosity', [
+        'python simplerecon.py -d target.com --sources crtsh -v 4',
+        'python simplerecon.py -d target.com --profile fast --quiet',
+        'python simplerecon.py -d target.com -v 2     # show HTTP status codes',
+        'python simplerecon.py -d target.com -v 4     # full debug + exceptions',
+    ]),
+    ('Piping into httpx (HTTP probing)', [
+        'python simplerecon.py -d target.com --no-banner | httpx -silent',
+        'python simplerecon.py -d target.com --no-banner | httpx -silent -mc 200',
+        'python simplerecon.py -d target.com --no-banner | httpx -silent -status-code -title -tech-detect',
+        'python simplerecon.py -d target.com --no-banner | httpx -silent -mc 200,301,302 -title',
+    ]),
+    ('Piping into nuclei (vulnerability scanning)', [
+        'python simplerecon.py -d target.com --no-banner | httpx -silent | nuclei -t cves/ -silent',
+        'python simplerecon.py -d target.com --no-banner | httpx -silent | nuclei -severity critical,high',
+        'python simplerecon.py -d target.com --profile osint --no-banner | httpx -silent | nuclei -t exposures/',
+    ]),
+    ('Piping into dnsx (DNS resolution + CNAME)', [
+        'python simplerecon.py -d target.com --no-banner | dnsx -silent -a -resp',
+        'python simplerecon.py -d target.com --no-banner | dnsx -silent -cname -resp',
+        '# detect potential takeovers via CNAME chain',
+        'python simplerecon.py -d target.com --no-banner | dnsx -silent -cname -resp \\\n       | grep -E "amazonaws|azurewebsites|github.io|herokuapp|netlify|cloudfront"',
+    ]),
+    ('Piping into nmap (port scanning)', [
+        'python simplerecon.py -d target.com --no-banner > subs.txt && nmap -iL subs.txt -p 80,443,8080,8443 -T4 --open',
+        'python simplerecon.py -d target.com --no-banner | dnsx -silent -a -resp-only \\\n       | sort -u | nmap -iL - -p- -T4 --open',
+    ]),
+    ('Piping into katana / gospider (crawling)', [
+        'python simplerecon.py -d target.com --no-banner | httpx -silent | katana -silent',
+        'python simplerecon.py -d target.com --no-banner | httpx -silent | gau --threads 10',
+    ]),
+    ('Screenshots (eyewitness / gowitness / aquatone)', [
+        'python simplerecon.py -d target.com --verify-live -o txt --outfile subs.txt && \\\n       eyewitness --web -f subs.txt --no-prompt -d screenshots/',
+        'python simplerecon.py -d target.com --no-banner | httpx -silent | gowitness scan single',
+        'python simplerecon.py -d target.com --no-banner | aquatone -out aquatone-report/',
+    ]),
+    ('Takeover hunting (verify-live + jq + dnsx)', [
+        'python simplerecon.py -d target.com --verify-live -o json --outfile out.json',
+        '# extract candidates flagged as takeover-vulnerable',
+        'jq -r \'.live_hosts | to_entries[] | select(.value.takeover != null) | "\\(.key)\\t\\(.value.takeover)"\' out.json',
+        '# confirm dangling CNAME for each candidate',
+        'jq -r \'.live_hosts | to_entries[] | select(.value.takeover) | .key\' out.json \\\n       | dnsx -silent -cname -resp',
+    ]),
+    ('Asset discovery from a domain list', [
+        'python simplerecon.py -l scope.txt --output json --outfile all_subs.json --timeout 60',
+        'python simplerecon.py -l scope.txt --profile osint --verify-live --rate-limit 3',
+        'cat scope.txt | xargs -I{} python simplerecon.py -d {} --no-banner | sort -u > all_unique.txt',
+    ]),
+    ('Continuous monitoring (diff against previous run)', [
+        'python simplerecon.py -d target.com --no-banner | sort -u > today.txt',
+        'comm -13 <(sort -u yesterday.txt) today.txt   # show only new subs',
+    ]),
+    ('string-x (strx) — modular pipeline automation [github.com/MrCl0wnLab/string-x]', [
+        '# HTTP probe each discovered subdomain through strx',
+        'python simplerecon.py -d target.com --no-banner \\\n       | strx -st "echo {STRING}" -module "clc:http_probe" -pm',
+        '# resolve subs -> extract IPs -> Shodan lookup per IP',
+        'python simplerecon.py -d target.com --no-banner \\\n       | strx -st "echo {STRING}" -module "clc:dns" -pm \\\n       | strx -st "echo {STRING}" -module "ext:ip" -pm \\\n       | strx -st "echo {STRING}" -module "clc:shodan" -pm',
+        '# DNS + IP extraction + geo-IP enrichment in a single chain',
+        'python simplerecon.py -d target.com --no-banner \\\n       | strx -st "echo {STRING}" -module "clc:dns|ext:ip|clc:geoip" -pm',
+        '# scrape each live host and extract emails',
+        'python simplerecon.py -d target.com --verify-live --no-banner \\\n       | strx -st "curl -sk https://{STRING}" -module "ext:email" -pm',
+        '# extract URLs from each subdomain and pipe to nuclei',
+        'python simplerecon.py -d target.com --no-banner \\\n       | strx -st "curl -sk https://{STRING}" -module "ext:url" -pm \\\n       | nuclei -silent -severity high,critical',
+        '# WHOIS lookup on every discovered subdomain',
+        'python simplerecon.py -d target.com --no-banner \\\n       | strx -st "echo {STRING}" -module "clc:whois" -pm',
+        '# notify Telegram channel with every new live subdomain',
+        'python simplerecon.py -d target.com --verify-live --no-banner \\\n       | strx -st "echo {STRING}" -module "con:telegram" -pm',
+        '# combine: dns -> port scan via nmap module -> save report',
+        'python simplerecon.py -d target.com --no-banner \\\n       | strx -st "echo {STRING}" -module "clc:dns|ext:ip" -pm \\\n       | strx -st "echo {STRING}" -module "out:csv" -pm',
+    ]),
+]
+
+
+def print_examples() -> None:
+    import core.colors as C
+
+    print(f'\n{C.bold(C.white("SimpleReconSubdomain — Usage Examples"))}\n')
+    for section, cmds in _EXAMPLES:
+        print(f'{C.bold(C.cyan("# " + section))}')
+        for cmd in cmds:
+            if cmd.startswith('#'):
+                # inline comment line inside a section
+                print(f'  {C.yellow(cmd)}')
+            else:
+                print(f'  {C.gray(cmd)}')
+        print()
