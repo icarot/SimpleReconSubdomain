@@ -25,7 +25,7 @@
 </center>
 
 Passive and active subdomain enumeration tool for OSINT and reconnaissance workflows.
-Built with async Python - queries **40 sources** (35 passive + 5 active) in parallel with no external shell dependencies.
+Built with async Python - queries **39 sources** (34 passive + 5 active) in parallel with no external shell dependencies.
 
 Techniques inspired by **subfinder**, **amass**, **puredns** and **subjack**:
 multi-probe wildcard detection, DNSSEC NSEC zone walking, TLS SAN extraction, SRV record mining, two-pass trusted-resolver validation, recursive enumeration, JavaScript link extraction, and subdomain-takeover fingerprinting.
@@ -113,12 +113,11 @@ API keys are stored in `config/api_keys.json` (gitignored to prevent leaks).
     "pulsedive_key":         "",
     "intelx_key":            "",
     "publicwww_key":         "",
-    "gitlab_token":          "",
     "merklemap_key":         ""
 }
 ```
 
-Fill in the keys you have. Sources with empty keys still run if they support unauthenticated access (`hackertarget`, `urlscan`, `alienvault`, `dnsdumpster`, `commoncrawl`, `anubisdb`, `subdomaincenter`, `threatminer`, `fofa` free scrape, `gitlab` unauthenticated). Sources marked as requiring a key return zero results when the key is missing.
+Fill in the keys you have. Sources with empty keys still run if they support unauthenticated access (`hackertarget`, `urlscan`, `alienvault`, `dnsdumpster`, `commoncrawl`, `anubisdb`, `subdomaincenter`, `threatminer`, `fofa` free scrape). Sources marked as requiring a key return zero results when the key is missing.
 
 **Where to get each key:**
 
@@ -144,7 +143,6 @@ Fill in the keys you have. Sources with empty keys still run if they support una
 | `pulsedive_key` | https://pulsedive.com/api/ |
 | `intelx_key` | https://intelx.io/account?tab=developer |
 | `publicwww_key` | https://publicwww.com/api.html |
-| `gitlab_token` | https://gitlab.com/-/user_settings/personal_access_tokens/legacy/new (scope: `read_api`) |
 | `merklemap_key` | https://www.merklemap.com/dashboard/api (paid subscription required) |
 
 ---
@@ -306,8 +304,8 @@ python simplerecon.py -d target.com --profile fast
 |---|---|---|
 | `fast` | Quick scan — fastest no-auth sources only | `crtsh`, `certspotter`, `hackertarget`, `rapiddns`, `jldc`, `alienvault`, `anubisdb`, `subdomaincenter` |
 | `stealth` | Minimal footprint — passive only, rate-limited (`rate_limit=2`) | `crtsh`, `certspotter`, `wayback`, `commoncrawl`, `robtex`, `anubisdb` |
-| `osint` | Code repos + threat intel + CT logs + asset DBs | `crtsh`, `certspotter`, `alienvault`, `virustotal`, `shodan`, `github`, `grep_app`, `gitlab`, `threatminer`, `anubisdb`, `subdomaincenter`, `hackertarget`, `rapiddns`, `urlscan` |
-| `code` | Code search only | `github`, `grep_app`, `gitlab` |
+| `osint` | Code repos + threat intel + CT logs + asset DBs | `crtsh`, `certspotter`, `alienvault`, `virustotal`, `shodan`, `github`, `grep_app`, `threatminer`, `anubisdb`, `subdomaincenter`, `hackertarget`, `rapiddns`, `urlscan` |
+| `code` | Code search only | `github`, `grep_app` |
 | `active` | Active techniques only | `zone_transfer`, `dns_mining`, `nsec_walk`, `srv_enum`, `js_scrape` |
 | `full` | All available passive and active sources | `all` |
 
@@ -393,7 +391,6 @@ python simplerecon.py --list-sources
 | `bufferover` | No | Rapid7 FDNS via TLS |
 | `dnsdumpster` | No | DNS recon tool (web scraping) |
 | `github` | Required | Code search for hardcoded domain references |
-| `gitlab` | Optional | GitLab code search (higher rate limit with token) |
 | `grep_app` | No | grep.app GitHub code search |
 | `virustotal` | Required | VT subdomains endpoint |
 | `securitytrails` | Required | DNS history |

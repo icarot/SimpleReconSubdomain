@@ -291,7 +291,7 @@ _EXAMPLES: list[tuple[str, list[str]]] = [
     ]),
     ('Custom source selection', [
         'python simplerecon.py -d target.com --sources crtsh,hackertarget,wayback',
-        'python simplerecon.py -d target.com --sources github,gitlab,grep_app',
+        'python simplerecon.py -d target.com --sources github,grep_app,urlscan',
         'python simplerecon.py -d target.com --sources nsec_walk,srv_enum,js_scrape',
         'python simplerecon.py -d target.com --sources anubisdb,merklemap,subdomaincenter,threatminer',
     ]),

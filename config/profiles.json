@@ -13,15 +13,15 @@
         "description": "OSINT-focused — code repos, threat intel, CT logs, and asset databases",
         "sources": [
             "crtsh", "certspotter", "alienvault", "virustotal", "shodan",
-            "github", "grep_app", "gitlab",
+            "github", "grep_app",
             "threatminer", "anubisdb", "subdomaincenter",
             "hackertarget", "rapiddns", "urlscan"
         ],
         "options": {}
     },
     "code": {
-        "description": "Code search only — GitHub, GitLab, grep.app",
-        "sources": ["github", "grep_app", "gitlab"],
+        "description": "Code search only — GitHub, grep.app",
+        "sources": ["github", "grep_app"],
         "options": {}
     },
     "active": {
