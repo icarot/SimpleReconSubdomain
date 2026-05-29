@@ -8,8 +8,6 @@ Requires a C99 API key. Sign up at: https://api.c99.nl/
 Add 'c99_key' to config/api_keys.json.
 """
 
-import httpx
-
 from core.config import get_key
 from sources.base import BaseSource
 
@@ -35,7 +33,7 @@ class C99(BaseSource):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with self._make_client() as client:
                 resp = await self._get(client, self._BASE_URL, params=params)
 
                 if resp.status_code == 401:

@@ -7,8 +7,6 @@ extracting subdomains without requiring an API key.
 No API key required.
 Reference: https://www.threatminer.org/api.php
 """
-import httpx
-
 from sources.base import BaseSource
 
 
@@ -20,7 +18,7 @@ class Threatminer(BaseSource):
     async def fetch(self, domain: str) -> set[str]:
         subdomains: set[str] = set()
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with self._make_client() as client:
                 resp = await self._get(
                     client,
                     'https://api.threatminer.org/v2/domain.php',

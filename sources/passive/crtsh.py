@@ -1,4 +1,3 @@
-import httpx
 from sources.base import BaseSource
 
 
@@ -12,7 +11,7 @@ class CrtSh(BaseSource):
         subdomains: set[str] = set()
         _timeout = max(self.timeout, 60.0)  # crt.sh can be slow; never go below 60s
         try:
-            async with httpx.AsyncClient(timeout=_timeout, follow_redirects=True) as client:
+            async with self._make_client(timeout=_timeout) as client:
                 resp = await self._get(client, url)
                 if resp.status_code != 200:
                     return subdomains

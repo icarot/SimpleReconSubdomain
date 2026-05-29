@@ -9,8 +9,6 @@ Set 'merklemap_key' in config/api_keys.json with a valid subscription token.
 
 Reference: https://www.merklemap.com/documentation/search
 """
-import httpx
-
 from core.config import get_key
 from sources.base import BaseSource
 
@@ -31,11 +29,7 @@ class Merklemap(BaseSource):
         subdomains: set[str] = set()
         headers = {'Authorization': f'Bearer {token}'}
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout,
-                follow_redirects=True,
-                headers=headers,
-            ) as client:
+            async with self._make_client(headers=headers) as client:
                 for page in range(self._MAX_PAGES):
                     resp = await self._get(
                         client,

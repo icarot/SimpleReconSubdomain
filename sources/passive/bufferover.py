@@ -1,4 +1,3 @@
-import httpx
 from sources.base import BaseSource
 
 
@@ -11,7 +10,7 @@ class BufferOver(BaseSource):
         url = f'https://tls.bufferover.run/dns?q=.{domain}'
         subdomains: set[str] = set()
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with self._make_client() as client:
                 resp = await self._get(client, url)
                 if resp.status_code != 200:
                     return subdomains

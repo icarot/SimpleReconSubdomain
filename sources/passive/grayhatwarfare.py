@@ -1,5 +1,4 @@
 import re
-import httpx
 from sources.base import BaseSource
 from core.config import get_key
 
@@ -47,9 +46,7 @@ class GrayHatWarfare(BaseSource):
 
         subdomains: set[str] = set()
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout, follow_redirects=True, headers=headers
-            ) as client:
+            async with self._make_client(headers=headers) as client:
                 resp = await self._get(client, self._BASE_URL, params=params)
 
                 if resp.status_code != 200:

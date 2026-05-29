@@ -11,8 +11,6 @@ Reference: https://dnsdumpster.com/
 
 import re
 
-import httpx
-
 from sources.base import BaseSource
 
 _BASE_URL = 'https://dnsdumpster.com/'
@@ -46,11 +44,7 @@ class Dnsdumpster(BaseSource):
         }
 
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout,
-                follow_redirects=True,
-                headers=headers,
-            ) as client:
+            async with self._make_client(headers=headers) as client:
                 # Step 1: GET to obtain CSRF token from cookies / hidden form field
                 get_resp = await self._get(client, _BASE_URL)
                 if get_resp.status_code != 200:

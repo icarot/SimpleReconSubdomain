@@ -1,5 +1,4 @@
 import json
-import httpx
 from sources.base import BaseSource
 
 
@@ -12,7 +11,7 @@ class Robtex(BaseSource):
         url = f'https://freeapi.robtex.com/pdns/forward/{domain}'
         subdomains: set[str] = set()
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with self._make_client() as client:
                 resp = await self._get(client, url)
                 if resp.status_code != 200:
                     return subdomains

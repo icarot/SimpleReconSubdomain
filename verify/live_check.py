@@ -10,6 +10,7 @@ SAN extraction uses Python's built-in ssl module (no extra dependencies).
 """
 
 import asyncio
+import ipaddress
 import re
 import socket
 import ssl
@@ -115,6 +116,131 @@ _TAKEOVER_HEADERS: dict[str, list[tuple[str, str]]] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Cloud provider detection — CNAME-based
+# Maps CNAME suffixes to provider names (broader than takeover fingerprints).
+# ---------------------------------------------------------------------------
+_CLOUD_CNAME: dict[str, list[str]] = {
+    'aws': [
+        '.amazonaws.com', '.cloudfront.net', '.elb.amazonaws.com',
+        '.execute-api.amazonaws.com', '.s3.amazonaws.com',
+        '.awsglobalaccelerator.com', '.awsapprunner.com',
+    ],
+    'azure': [
+        '.azurewebsites.net', '.cloudapp.azure.com', '.trafficmanager.net',
+        '.azureedge.net', '.azurefd.net', '.azure.com', '.windows.net',
+        '.azure-api.net', '.azurecontainer.io',
+    ],
+    'gcp': [
+        '.appspot.com', '.googleapis.com', '.run.app', '.cloudfunctions.net',
+        '.a.run.app', '.uc.r.appspot.com',
+    ],
+    'cloudflare': ['.cdn.cloudflare.net', '.cloudflare.com', '.cloudflare.net'],
+    'fastly':     ['.fastly.net', '.fastlylb.net', '.global.ssl.fastly.net'],
+    'github':     ['.github.io', '.github.com', '.githubusercontent.com'],
+    'heroku':     ['.herokudns.com', '.herokuapp.com'],
+    'netlify':    ['.netlify.app', '.netlify.com'],
+    'vercel':     ['.vercel.app', '.vercel-infrastructure.com', '.now.sh'],
+    'digitalocean': ['.digitaloceanspaces.com', '.ondigitalocean.app'],
+}
+
+# ---------------------------------------------------------------------------
+# Cloud provider detection — IP CIDR ranges (summary; not exhaustive)
+# ---------------------------------------------------------------------------
+_CLOUD_CIDR: dict[str, list[str]] = {
+    'aws': [
+        '3.0.0.0/8', '13.32.0.0/15', '13.224.0.0/14', '15.197.128.0/17',
+        '18.0.0.0/8', '34.192.0.0/10', '35.0.0.0/8', '44.192.0.0/10',
+        '52.0.0.0/8', '54.0.0.0/8', '99.77.0.0/16', '104.16.0.0/13',
+        '205.251.192.0/19',
+    ],
+    'azure': [
+        '13.64.0.0/11', '20.0.0.0/8', '40.64.0.0/10', '51.0.0.0/8',
+        '52.96.0.0/12', '65.52.0.0/14', '104.40.0.0/13', '137.116.0.0/14',
+        '168.61.0.0/16', '191.232.0.0/13',
+    ],
+    'gcp': [
+        '8.34.208.0/20', '8.35.192.0/20', '23.236.48.0/20', '23.251.128.0/19',
+        '34.0.0.0/8', '35.184.0.0/13', '104.196.0.0/14', '107.167.160.0/19',
+        '130.211.0.0/22', '146.148.0.0/17', '162.216.148.0/22',
+        '172.217.0.0/16', '216.239.32.0/22',
+    ],
+    'cloudflare': [
+        '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+        '104.16.0.0/13', '104.24.0.0/14', '108.162.192.0/18',
+        '131.0.72.0/22', '141.101.64.0/18', '162.158.0.0/15',
+        '172.64.0.0/13', '188.114.96.0/20', '190.93.240.0/20',
+        '197.234.240.0/22', '198.41.128.0/17',
+    ],
+    'fastly': [
+        '23.235.32.0/20', '43.249.72.0/22', '103.244.50.0/24',
+        '103.245.222.0/23', '151.101.0.0/16', '157.52.64.0/18',
+        '167.82.0.0/17', '167.82.128.0/20', '172.111.64.0/18',
+        '185.31.16.0/22', '199.27.72.0/21', '199.232.0.0/16',
+    ],
+}
+
+# Pre-parse CIDR networks for fast lookup
+_PARSED_CIDR: dict[str, list[ipaddress.IPv4Network | ipaddress.IPv6Network]] = {}
+for _provider, _cidrs in _CLOUD_CIDR.items():
+    _PARSED_CIDR[_provider] = []
+    for _c in _cidrs:
+        try:
+            _PARSED_CIDR[_provider].append(ipaddress.ip_network(_c, strict=False))
+        except ValueError:
+            pass
+
+
+def _detect_cloud_provider(
+    ips: list[str],
+    cname_chain: list[str] | None = None,
+) -> str | None:
+    """Return cloud provider name from CNAME chain or IP addresses, or None."""
+    # CNAME-based detection first (more reliable)
+    if cname_chain:
+        chain_str = ' '.join(cname_chain).lower()
+        for provider, patterns in _CLOUD_CNAME.items():
+            if any(p in chain_str for p in patterns):
+                return provider
+
+    # IP CIDR-based detection
+    for ip_str in ips:
+        try:
+            addr = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue
+        for provider, networks in _PARSED_CIDR.items():
+            if any(addr in net for net in networks):
+                return provider
+
+    return None
+
+
+def _resolve_ips_sync(hostname: str) -> list[str]:
+    """Blocking: resolve A records for *hostname*, return list of IP strings."""
+    try:
+        results = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC)
+        seen: dict[str, None] = {}
+        for res in results:
+            ip = res[4][0]
+            seen[ip] = None
+        return list(seen.keys())
+    except Exception:
+        return []
+
+
+async def _resolve_ips(hostname: str, timeout: int = 5) -> list[str]:
+    """Async wrapper for IP resolution."""
+    loop = asyncio.get_event_loop()
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, _resolve_ips_sync, hostname),
+            timeout=timeout,
+        )
+    except Exception:
+        return []
+
+
 def _detect_takeover(body: str, headers: dict) -> str | None:
     """Return the service name if the response matches a body/header takeover fingerprint."""
     body_lower = body.lower()
@@ -184,6 +310,7 @@ async def verify_live(
     timeout: int = 5,
     quiet: bool = False,
     concurrency: int = 50,
+    proxy: str | None = None,
 ) -> dict[str, dict]:
     """
     Probe each subdomain over HTTPS then HTTP.
@@ -199,12 +326,16 @@ async def verify_live(
         max_keepalive_connections=max(1, concurrency // 2),
     )
 
-    async with httpx.AsyncClient(
-        timeout=timeout,
-        follow_redirects=True,
-        verify=False,  # intentional: recon may hit self-signed certs
-        limits=limits,
-    ) as client:
+    client_kwargs: dict = {
+        'timeout': timeout,
+        'follow_redirects': True,
+        'verify': False,  # intentional: recon may hit self-signed certs
+        'limits': limits,
+    }
+    if proxy:
+        client_kwargs['proxy'] = proxy
+
+    async with httpx.AsyncClient(**client_kwargs) as client:
         async def check(sub: str) -> None:
             async with semaphore:
                 https_ok = False
@@ -242,6 +373,11 @@ async def verify_live(
                             sans = await _get_tls_sans(sub, timeout=timeout)
                             entry['tls_sans'] = sans
 
+                        # IP resolution + cloud provider identification
+                        ips = await _resolve_ips(sub, timeout=timeout)
+                        entry['ips'] = ips
+                        entry['cloud'] = _detect_cloud_provider(ips, cname_chain)
+
                         results[sub] = entry
 
                         if not quiet:
@@ -250,8 +386,10 @@ async def verify_live(
                             san_str = f' [{len(entry["tls_sans"])} SANs]' if entry['tls_sans'] else ''
                             takeover_str = f' [TAKEOVER? {entry["takeover"]}]' if entry['takeover'] else ''
                             waf_str = f' [{waf}]' if waf else ''
+                            cloud_str = f' [{entry["cloud"]}]' if entry.get('cloud') else ''
+                            ip_str = f' {",".join(ips[:2])}{"…" if len(ips) > 2 else ""}' if ips else ''
                             print(colors.format_msg(
-                                f'[LIVE] {sub} → {resp.status_code}{title_str}{san_str}{takeover_str}{waf_str}'
+                                f'[LIVE] {sub} → {resp.status_code}{title_str}{ip_str}{cloud_str}{san_str}{takeover_str}{waf_str}'
                             ))
                         return
                     except Exception:
@@ -259,7 +397,11 @@ async def verify_live(
                             https_ok = False
 
                 if not https_ok:
-                    results[sub] = {'url': None, 'status': None, 'tls_sans': [], 'takeover': None, 'cname': None, 'waf': None}
+                    results[sub] = {
+                        'url': None, 'status': None, 'tls_sans': [],
+                        'takeover': None, 'cname': None, 'waf': None,
+                        'ips': [], 'cloud': None,
+                    }
 
         await asyncio.gather(*[check(sub) for sub in subdomains])
     return results

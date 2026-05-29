@@ -1,4 +1,3 @@
-import httpx
 from sources.base import BaseSource
 from core.config import get_key
 
@@ -17,7 +16,7 @@ class Greynoise(BaseSource):
         subdomains: set[str] = set()
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with self._make_client() as client:
                 offset = 0
                 while True:
                     params = {

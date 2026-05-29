@@ -1,4 +1,3 @@
-import httpx
 from sources.base import BaseSource
 from core.config import get_key
 
@@ -18,9 +17,7 @@ class VirusTotal(BaseSource):
         headers = {'x-apikey': api_key}
 
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout, follow_redirects=True, headers=headers
-            ) as client:
+            async with self._make_client(headers=headers) as client:
                 cursor = None
                 while True:
                     params: dict = {'limit': 40}

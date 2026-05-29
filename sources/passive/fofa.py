@@ -1,8 +1,6 @@
 import base64
 import re
 
-import httpx
-
 from core.config import get_key
 from sources.base import BaseSource
 
@@ -42,7 +40,7 @@ class Fofa(BaseSource):
         }
         subdomains: set[str] = set()
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with self._make_client() as client:
                 resp = await self._get(
                     client,
                     'https://fofa.so/api/v1/search/all',
@@ -82,11 +80,7 @@ class Fofa(BaseSource):
         )
         subdomains: set[str] = set()
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout,
-                follow_redirects=True,
-                headers=_SCRAPE_HEADERS,
-            ) as client:
+            async with self._make_client(headers=_SCRAPE_HEADERS) as client:
                 resp = await self._get(
                     client,
                     'https://fofa.so/result',

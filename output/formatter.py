@@ -18,7 +18,8 @@ def save_output(
     Serialize *results* to the requested format and write to *outfile* or stdout.
 
     *results* is a list of per-domain dicts with keys:
-        domain, subdomains (set), live (dict), sources (dict)
+        domain, subdomains (set), live (dict), sources (dict),
+        tld_variants (set, optional)
 
     Formats: txt, json, csv, ndjson
     """
@@ -29,6 +30,7 @@ def save_output(
         subdomains: set[str] = result.get('subdomains', set())
         live: dict = result.get('live', {})
         sources: dict = result.get('sources', {})
+        tld_variants: set[str] = result.get('tld_variants', set())
         timestamp = datetime.now().isoformat()
 
         if fmt == 'json':
@@ -42,6 +44,10 @@ def save_output(
                         'content_length': info.get('content_length', 0),
                         'url': info.get('url', ''),
                     }
+                    if info.get('ips'):
+                        entry['ips'] = info['ips']
+                    if info.get('cloud'):
+                        entry['cloud'] = info['cloud']
                     sans = info.get('tls_sans', [])
                     if sans:
                         entry['tls_sans'] = sans
@@ -61,29 +67,48 @@ def save_output(
                 'live_hosts': live_hosts,
                 'sources': sources,
             }
+            if tld_variants:
+                data['tld_variants'] = sorted(tld_variants)
             segments.append(json.dumps(data, indent=2))
 
         elif fmt == 'csv':
             buf = io.StringIO()
             writer = csv.DictWriter(
                 buf,
-                fieldnames=['domain', 'subdomain', 'status', 'title', 'server',
-                            'tls_sans', 'takeover', 'cname', 'waf'],
+                fieldnames=[
+                    'domain', 'subdomain', 'type',
+                    'status', 'title', 'server',
+                    'ips', 'cloud',
+                    'tls_sans', 'takeover', 'cname', 'waf',
+                ],
             )
             writer.writeheader()
             for sub in sorted(subdomains):
                 live_info = live.get(sub, {})
                 sans = live_info.get('tls_sans', [])
+                ips = live_info.get('ips', [])
                 writer.writerow({
                     'domain': domain,
                     'subdomain': sub,
+                    'type': 'subdomain',
                     'status': live_info.get('status', ''),
                     'title': live_info.get('title', ''),
                     'server': live_info.get('server', ''),
+                    'ips': '|'.join(ips) if ips else '',
+                    'cloud': live_info.get('cloud', ''),
                     'tls_sans': '|'.join(sans) if sans else '',
                     'takeover': live_info.get('takeover', ''),
                     'cname': live_info.get('cname', ''),
                     'waf': live_info.get('waf', ''),
+                })
+            for variant in sorted(tld_variants):
+                writer.writerow({
+                    'domain': domain,
+                    'subdomain': variant,
+                    'type': 'tld_variant',
+                    'status': '', 'title': '', 'server': '',
+                    'ips': '', 'cloud': '',
+                    'tls_sans': '', 'takeover': '', 'cname': '', 'waf': '',
                 })
             segments.append(buf.getvalue())
 
@@ -91,13 +116,17 @@ def save_output(
             # One compact JSON line per subdomain — pipe-friendly
             for sub in sorted(subdomains):
                 live_info = live.get(sub, {})
-                record: dict = {'domain': domain, 'subdomain': sub}
+                record: dict = {'domain': domain, 'subdomain': sub, 'type': 'subdomain'}
                 if live_info.get('status') is not None:
                     record['status'] = live_info['status']
                     if live_info.get('title'):
                         record['title'] = live_info['title']
                     if live_info.get('server'):
                         record['server'] = live_info['server']
+                    if live_info.get('ips'):
+                        record['ips'] = live_info['ips']
+                    if live_info.get('cloud'):
+                        record['cloud'] = live_info['cloud']
                     if live_info.get('tls_sans'):
                         record['tls_sans'] = live_info['tls_sans']
                     if live_info.get('takeover'):
@@ -107,9 +136,19 @@ def save_output(
                     if live_info.get('waf'):
                         record['waf'] = live_info['waf']
                 segments.append(json.dumps(record))
+            for variant in sorted(tld_variants):
+                segments.append(json.dumps({
+                    'domain': domain, 'subdomain': variant, 'type': 'tld_variant'
+                }))
 
         else:  # txt (default)
-            segments.append('\n'.join(sorted(subdomains)))
+            lines = list(sorted(subdomains))
+            if tld_variants:
+                if not quiet:
+                    lines.append('')
+                    lines.append('# TLD variants')
+                lines.extend(sorted(tld_variants))
+            segments.append('\n'.join(lines))
 
     output = '\n'.join(segments)
 

@@ -1,0 +1,38 @@
+{
+    "_comment": "SimpleReconSubdomain run-config preset. Copy this file, edit as needed, and pass with --config.",
+    "_note": "Keys set to null are ignored (CLI/argparse defaults apply). CLI flags always override config values.",
+
+    "output": "json",
+    "outfile": "results.json",
+
+    "profile": "osint",
+    "sources": null,
+    "exclude": null,
+    "no_passive": false,
+
+    "threads": 20,
+    "timeout": 30,
+    "rate_limit": 3,
+
+    "verify_live": true,
+
+    "brute": null,
+    "resolvers": "config/resolvers.txt",
+    "check_resolvers": false,
+    "wildcard_tests": 3,
+    "validate_resolvers": false,
+    "permute": false,
+
+    "tld_brute": null,
+
+    "recursive": false,
+    "recursive_depth": 1,
+
+    "proxy": null,
+    "user_agent": "SimpleReconSubdomain/2",
+
+    "verbose": 0,
+    "quiet": false,
+    "no_banner": false,
+    "no_color": false
+}

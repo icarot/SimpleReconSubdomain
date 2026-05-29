@@ -14,8 +14,6 @@ No API key required; makes direct TCP connections to target IPs.
 import asyncio
 import socket
 
-import httpx
-
 from sources.base import BaseSource
 
 _VHOST_WORDS = [
@@ -101,7 +99,7 @@ class VhostProbe(BaseSource):
         baseline_status: int | None = None
         baseline_length: int | None = None
         try:
-            async with httpx.AsyncClient(timeout=5, verify=False) as client:
+            async with self._make_client(timeout=5, verify=False) as client:
                 resp = await client.get(
                     f'http://{ips[0]}',
                     headers={'Host': domain},
@@ -119,7 +117,7 @@ class VhostProbe(BaseSource):
             host = f'{candidate}.{domain}'
             async with sem:
                 try:
-                    async with httpx.AsyncClient(timeout=5, verify=False) as client:
+                    async with self._make_client(timeout=5, verify=False) as client:
                         resp = await client.get(
                             f'http://{ip}',
                             headers={'Host': host},

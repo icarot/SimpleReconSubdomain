@@ -1,4 +1,3 @@
-import httpx
 from sources.base import BaseSource
 
 
@@ -19,7 +18,7 @@ class Wayback(BaseSource):
         subdomains: set[str] = set()
         self.timeout = 50.0  # Wayback can be slow to respond
 
-        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+        async with self._make_client() as client:
             # Discover total number of CDX pages for this query
             try:
                 count_resp = await self._get(

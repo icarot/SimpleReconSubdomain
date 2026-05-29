@@ -9,8 +9,6 @@ Requires a Netlas API key. Sign up at: https://app.netlas.io/
 Add 'netlas_key' to config/api_keys.json.
 """
 
-import httpx
-
 from core.config import get_key
 from sources.base import BaseSource
 
@@ -43,7 +41,7 @@ class Netlas(BaseSource):
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with self._make_client() as client:
                 # Paginate until no more results
                 while True:
                     resp = await self._get(client, self._BASE_URL, params=params, headers=headers)

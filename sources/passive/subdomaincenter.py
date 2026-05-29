@@ -5,8 +5,6 @@ Free subdomain enumeration endpoint aggregating multiple passive sources.
 No API key required.
 Reference: https://api.subdomain.center/
 """
-import httpx
-
 from sources.base import BaseSource
 
 
@@ -18,7 +16,7 @@ class Subdomaincenter(BaseSource):
     async def fetch(self, domain: str) -> set[str]:
         subdomains: set[str] = set()
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with self._make_client() as client:
                 resp = await self._get(
                     client,
                     'https://api.subdomain.center/',

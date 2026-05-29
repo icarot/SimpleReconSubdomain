@@ -1,4 +1,3 @@
-import httpx
 from sources.base import BaseSource
 from core.config import get_key
 
@@ -16,7 +15,7 @@ class HackerTarget(BaseSource):
 
         subdomains: set[str] = set()
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with self._make_client() as client:
                 resp = await self._get(client, 'https://api.hackertarget.com/hostsearch/', params=params)
                 if resp.status_code != 200:
                     return subdomains

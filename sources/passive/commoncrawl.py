@@ -12,8 +12,6 @@ Reference: https://index.commoncrawl.org/
 import json
 from urllib.parse import urlparse
 
-import httpx
-
 from sources.base import BaseSource
 
 _INDEX_URL = 'https://index.commoncrawl.org/collinfo.json'
@@ -29,7 +27,7 @@ class Commoncrawl(BaseSource):
     async def fetch(self, domain: str) -> set[str]:
         subdomains: set[str] = set()
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        async with self._make_client() as client:
             # Step 1: fetch list of available indexes and pick the most recent one
             try:
                 resp = await self._get(client, _INDEX_URL)

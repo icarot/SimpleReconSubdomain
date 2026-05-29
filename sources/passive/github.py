@@ -11,8 +11,6 @@ Add 'github_token' to config/api_keys.json.
 
 import re
 
-import httpx
-
 from core.config import get_key
 from sources.base import BaseSource
 
@@ -45,7 +43,7 @@ class Github(BaseSource):
 
         subdomains: set[str] = set()
 
-        async with httpx.AsyncClient(timeout=self.timeout, headers=headers) as client:
+        async with self._make_client(headers=headers) as client:
             for page in range(1, self._MAX_PAGES + 1):
                 params = {
                     'q': domain,

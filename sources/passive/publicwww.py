@@ -1,7 +1,5 @@
 import re
 
-import httpx
-
 from core.config import get_key
 from sources.base import BaseSource
 
@@ -23,7 +21,7 @@ class Publicwww(BaseSource):
         )
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with self._make_client() as client:
                 resp = await self._get(
                     client,
                     f'https://publicwww.com/websites/%22.{domain}%22/',

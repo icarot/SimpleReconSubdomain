@@ -66,6 +66,13 @@ def main() -> None:
         print_examples()
         sys.exit(0)
 
+    # Apply run-config preset before engine init (CLI flags already parsed, so
+    # they will override config values via apply_run_config's default-comparison).
+    if getattr(args, 'config', None):
+        from core.run_config import load_run_config, apply_run_config
+        cfg = load_run_config(args.config)
+        apply_run_config(args, cfg)
+
     if not args.domain and not args.list and not getattr(args, 'stdin', False) and sys.stdin.isatty():
         parser.print_help()
         sys.exit(1)

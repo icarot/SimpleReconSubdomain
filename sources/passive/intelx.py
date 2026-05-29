@@ -1,7 +1,5 @@
 import asyncio
 
-import httpx
-
 from core.config import get_key
 from sources.base import BaseSource
 
@@ -21,7 +19,7 @@ class IntelX(BaseSource):
         subdomains: set[str] = set()
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with self._make_client() as client:
                 # Step 1: initiate phonebook search
                 resp = await client.post(
                     f'{self._BASE}/phonebook/search',

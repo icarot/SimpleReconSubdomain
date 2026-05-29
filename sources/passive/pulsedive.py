@@ -1,5 +1,3 @@
-import httpx
-
 from core.config import get_key
 from sources.base import BaseSource
 
@@ -19,7 +17,7 @@ class Pulsedive(BaseSource):
         subdomains: set[str] = set()
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with self._make_client() as client:
                 resp = await self._get(
                     client,
                     'https://pulsedive.com/api/explore.php',

@@ -12,8 +12,6 @@ import asyncio
 import re
 from urllib.parse import urljoin, urlparse
 
-import httpx
-
 from sources.base import BaseSource
 
 _JS_SRC_RE = re.compile(r'<script[^>]+src=["\']([^"\']+\.js[^"\']*)["\']', re.IGNORECASE)
@@ -54,12 +52,7 @@ class JsScrape(BaseSource):
             re.IGNORECASE,
         )
 
-        async with httpx.AsyncClient(
-            timeout=self.timeout,
-            follow_redirects=True,
-            verify=False,
-            headers=_BROWSER_HEADERS,
-        ) as client:
+        async with self._make_client(verify=False, headers=_BROWSER_HEADERS) as client:
             # ── Step 1: fetch root page (try https then http) ──────────
             root_html = ''
             base_url = ''

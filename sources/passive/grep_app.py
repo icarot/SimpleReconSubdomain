@@ -1,7 +1,5 @@
 import re
 
-import httpx
-
 from sources.base import BaseSource
 
 _HEADERS = {
@@ -30,11 +28,7 @@ class GrepApp(BaseSource):
         )
 
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout,
-                follow_redirects=True,
-                headers=_HEADERS,
-            ) as client:
+            async with self._make_client(headers=_HEADERS) as client:
                 for page in range(1, 6):  # up to 5 pages
                     params = {'q': domain, 'page': page, 'format': 'e'}
                     resp = await self._get(

@@ -149,6 +149,17 @@ def build_parser() -> argparse.ArgumentParser:
         help='Print categorized usage examples (incl. tool chaining) and exit',
     )
 
+    # Run-config preset
+    parser.add_argument(
+        '--config',
+        metavar='FILE',
+        help=(
+            'JSON file with CLI argument presets (run-config). '
+            'Explicit CLI flags always override values from the config file. '
+            'See config/run_config.example.json for the full format.'
+        ),
+    )
+
     # Brute-force
     parser.add_argument(
         '--brute', metavar='WORDLIST', help='Wordlist path for DNS brute-force'
@@ -190,6 +201,20 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             'After brute-force, re-validate results against trusted resolvers '
             '(Google/Cloudflare) to eliminate DNS-poisoned false positives (PureDNS two-pass technique).'
+        ),
+    )
+
+    # TLD brute-force
+    parser.add_argument(
+        '--tld-brute',
+        nargs='?',
+        const='',
+        metavar='FILE',
+        help=(
+            'Discover live TLD variants of the target base domain '
+            '(e.g. target.net, target.io). '
+            'Optional FILE overrides the default config/tlds.txt wordlist. '
+            'Results are reported separately from subdomains.'
         ),
     )
 
@@ -389,6 +414,18 @@ _EXAMPLES: list[tuple[str, list[str]]] = [
         'jq -r \'.live_hosts | to_entries[] | select(.value.takeover != null) | "\\(.key)\\t\\(.value.takeover)"\' out.json',
         '# confirm dangling CNAME for each candidate',
         'jq -r \'.live_hosts | to_entries[] | select(.value.takeover) | .key\' out.json \\\n       | dnsx -silent -cname -resp',
+    ]),
+    ('TLD brute force', [
+        'python simplerecon.py -d target.com --tld-brute',
+        'python simplerecon.py -d target.com --tld-brute custom_tlds.txt',
+        'python simplerecon.py -d target.com --tld-brute -o json --outfile result.json',
+    ]),
+    ('Run-config presets (--config)', [
+        'cp config/run_config.example.json myrun.json',
+        '# edit myrun.json with your preferred options',
+        'python simplerecon.py -d target.com --config myrun.json',
+        '# CLI flags override config values:',
+        'python simplerecon.py -d target.com --config myrun.json --output txt',
     ]),
     ('Asset discovery from a domain list', [
         'python simplerecon.py -l scope.txt --output json --outfile all_subs.json --timeout 60',

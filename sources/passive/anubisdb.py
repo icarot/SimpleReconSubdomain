@@ -1,5 +1,3 @@
-import httpx
-
 from sources.base import BaseSource
 
 
@@ -11,7 +9,7 @@ class Anubisdb(BaseSource):
     async def fetch(self, domain: str) -> set[str]:
         subdomains: set[str] = set()
         try:
-            async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            async with self._make_client() as client:
                 resp = await self._get(
                     client, f'https://jonlu.ca/anubis/subdomains/{domain}'
                 )

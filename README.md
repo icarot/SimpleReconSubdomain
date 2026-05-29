@@ -25,7 +25,7 @@
 </center>
 
 Passive and active subdomain enumeration tool for OSINT and reconnaissance workflows.
-Built with async Python - queries **46 sources** (39 passive + 7 active) in parallel with no external shell dependencies.
+Built with async Python - queries **47 sources** (39 passive + 8 active) in parallel with no external shell dependencies.
 
 Techniques inspired by **subfinder**, **amass**, **puredns** and **subjack**:
 multi-probe wildcard detection, DNSSEC NSEC zone walking, TLS SAN extraction, SRV record mining, two-pass trusted-resolver validation, recursive enumeration, JavaScript link extraction, and subdomain-takeover fingerprinting.
@@ -57,9 +57,11 @@ Twitter:  https://twitter.com/MrCl0wnLab
 - [API Keys](#api-keys)
 - [Usage](#usage)
 - [Profiles](#profiles)
+- [Run-Config Presets](#run-config-presets)
 - [Passive vs Active Modules](#passive-vs-active-modules)
 - [Sources](#sources)
 - [DNS Brute-force](#dns-brute-force)
+- [TLD Brute-force](#tld-brute-force)
 - [Advanced Techniques](#advanced-techniques)
 - [Subdomain Takeover Detection](#subdomain-takeover-detection)
 - [Output Formats](#output-formats)
@@ -171,6 +173,9 @@ python simplerecon.py --list-sources
 # List available profiles (curated source groups)
 python simplerecon.py --list-profiles
 
+# Print built-in usage examples and exit
+python simplerecon.py --list-examples
+
 # Run a predefined profile (no need to spell out sources)
 python simplerecon.py -d target.com --profile fast
 python simplerecon.py -d target.com --profile osint --verify-live
@@ -272,6 +277,13 @@ Source control:
   --no-passive           Skip passive sources; run active/brute only
   --list-sources         Print all sources with descriptions and exit
   --list-profiles        Print all profiles with their source sets and exit
+  --list-examples        Print built-in usage examples and exit
+
+Run-config:
+  --config FILE          Load CLI argument defaults from a JSON preset file.
+                         Only keys absent from the command line are applied;
+                         explicit CLI flags always win.
+                         Template: config/run_config.example.json
 
 Brute-force:
   --brute WORDLIST       Wordlist path for DNS brute-force
@@ -285,6 +297,10 @@ Brute-force:
   --validate-resolvers   Re-validate results against Google/Cloudflare after brute-force
                          to eliminate DNS-poisoned false positives (PureDNS two-pass)
   --permute              Generate Altdns-style permutations from found subdomains
+  --tld-brute [FILE]     Discover live TLD variants of the target (e.g. target.net, target.io).
+                         Strips the current TLD, resolves {base}.{tld} for every entry in the
+                         wordlist. Optional FILE overrides the default config/tlds.txt (~250 TLDs).
+                         Results are stored separately as tld_variants in all output formats.
 
 Post-processing:
   --verify-live          HTTP/HTTPS probe; also extracts TLS certificate SANs (Amass technique)
@@ -339,6 +355,40 @@ Add or edit profiles by modifying [config/profiles.json](config/profiles.json):
 
 ---
 
+## Run-Config Presets
+
+A run-config is a JSON file that stores CLI argument defaults, allowing you to run repeatable scans without long command lines.
+
+```bash
+python simplerecon.py -d target.com --config config/run_config.example.json
+python simplerecon.py -d target.com --config my_scan.json
+```
+
+**Precedence (highest → lowest):**
+1. Explicit CLI flags (always win)
+2. Values from the `--config` JSON file
+3. Built-in argparse defaults
+
+Only keys present in the JSON are applied; unknown keys are silently ignored so configs stay forward/backward compatible. A minimal config is perfectly valid — you only need to include the keys you want to set:
+
+```json
+{
+  "profile": "osint",
+  "verify_live": true,
+  "output": "json",
+  "outfile": "results.json"
+}
+```
+
+The annotated template at [config/run_config.example.json](config/run_config.example.json) documents every available key. Copy and edit it to create your own preset.
+
+```bash
+# List-examples shows ready-to-copy command patterns
+python simplerecon.py --list-examples
+```
+
+---
+
 ## Passive vs Active Modules
 
 ### Passive
@@ -360,12 +410,15 @@ Active sources **communicate directly with the target's DNS servers**. The targe
 | `nsec_walk` | DNSSEC NSEC chain walking to enumerate entire zone | **High** - queries authoritative NS directly |
 | `srv_enum` | SRV record enumeration for ~70 common service prefixes | **Moderate** - DNS queries to public resolvers |
 | `js_scrape` | Fetches the target's root HTML, downloads every linked `.js` file, and regex-extracts subdomains hardcoded in JS bundles | **High** - direct HTTP requests to target |
+| `spider` | Crawls the target site following `<a href>` links (max depth 2, 50 pages), extracts subdomains from every page | **High** - direct HTTP requests to target |
+| `ptr_sweep` | Reverse-DNS PTR sweep on /24 blocks containing target IPs | **Moderate** - DNS queries to public resolvers |
+| `vhost_probe` | Virtual-host brute-force via HTTP Host-header fuzzing | **High** - direct HTTP requests to target |
 
 Active modules are included in `--sources all`. To run them explicitly:
 
 ```bash
 # Run only active sources
-python simplerecon.py -d target.com --no-passive --sources zone_transfer,dns_mining,nsec_walk,srv_enum,js_scrape
+python simplerecon.py -d target.com --no-passive --sources zone_transfer,dns_mining,nsec_walk,srv_enum,js_scrape,spider
 
 # Mix passive + specific active
 python simplerecon.py -d target.com --sources crtsh,shodan,nsec_walk,srv_enum,js_scrape
@@ -430,7 +483,7 @@ python simplerecon.py --list-sources
 | `circl` | No (Optional Basic auth) | CIRCL Passive DNS - public free tier; key gives higher rate |
 | `bing` | No | Bing search - multi-template UA-rotating anti-bot scraping |
 
-### Active Sources (7)
+### Active Sources (8)
 
 | Source | Requires key | Notes |
 |---|---|---|
@@ -439,6 +492,7 @@ python simplerecon.py --list-sources
 | `nsec_walk` | No | DNSSEC NSEC zone walking |
 | `srv_enum` | No | SRV record enumeration (~70 service prefixes) |
 | `js_scrape` | No | Fetches target HTML + linked JS files, extracts subdomains via regex |
+| `spider` | No | HTML link crawler — follows `<a href>` links up to depth 2 (max 50 pages), extracts subdomains from every visited page; complements `js_scrape` |
 | `ptr_sweep` | No | Reverse-DNS PTR sweep on /24 blocks containing target IPs |
 | `vhost_probe` | No | Virtual-host brute-force via HTTP Host-header fuzzing (130+ word built-in list) |
 
@@ -519,6 +573,29 @@ python simplerecon.py -d target.com \
   --validate-resolvers \
   --threads 30
 ```
+
+---
+
+## TLD Brute-force
+
+`--tld-brute` discovers live registrations of the target domain under other TLDs (e.g. `target.net`, `target.io`, `target.com.br`). Useful for brand protection, typosquatting detection, and mapping the full domain portfolio of a target.
+
+```bash
+# Use the built-in wordlist (~250 TLDs)
+python simplerecon.py -d target.com --tld-brute
+
+# Use a custom TLD list
+python simplerecon.py -d target.com --tld-brute custom_tlds.txt
+
+# Combine with passive enumeration and live verification
+python simplerecon.py -d target.com --tld-brute --verify-live -o json --outfile results.json
+```
+
+The tool strips the current TLD from the target (handling compound TLDs like `.co.uk` and `.com.br` automatically), then resolves `{base}.{tld}` for every entry in the wordlist. Only variants that resolve in DNS are returned.
+
+Results appear in a separate `tld_variants` field in JSON/CSV/NDJSON output and are printed to the terminal at the end of each run.
+
+The default wordlist is [config/tlds.txt](config/tlds.txt). Edit it or supply your own file with `--tld-brute FILE`.
 
 ---
 

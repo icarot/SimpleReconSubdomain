@@ -1,4 +1,3 @@
-import httpx
 from sources.base import BaseSource
 from core.config import get_key
 
@@ -16,14 +15,12 @@ class AlienVault(BaseSource):
         headers = {}
         api_key = get_key('alienvault_otx')
         self.timeout = 30
-        
+
         if api_key:
             headers['X-OTX-API-KEY'] = api_key
 
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout, follow_redirects=True, headers=headers
-            ) as client:
+            async with self._make_client(headers=headers) as client:
                 resp = await self._get(client, url)
                 if resp.status_code != 200:
                     return subdomains

@@ -1,4 +1,3 @@
-import httpx
 from sources.base import BaseSource
 from core.config import get_key
 
@@ -25,9 +24,7 @@ class Censys(BaseSource):
         }
 
         try:
-            async with httpx.AsyncClient(
-                timeout=self.timeout, follow_redirects=True, auth=(api_id, api_secret)
-            ) as client:
+            async with self._make_client(auth=(api_id, api_secret)) as client:
                 while True:
                     resp = await self._get(
                         client,

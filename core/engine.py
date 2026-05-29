@@ -379,6 +379,29 @@ class Engine:
         subdomains = dedup.as_set()
         self.log(f'\n[+] Total unique subdomains found: {len(subdomains)}')
 
+        # ── TLD brute force ───────────────────────────────────────────
+        tld_variants: set[str] = set()
+        tld_brute_arg = getattr(self.args, 'tld_brute', None)
+        if tld_brute_arg is not None:
+            try:
+                from bruteforce.tld_bruteforce import tld_bruteforce
+            except ImportError:
+                self.log('[!] aiodns is required for --tld-brute. Run: pip install aiodns')
+            else:
+                self.log('[*] Starting TLD brute force...')
+                tld_file = tld_brute_arg if tld_brute_arg else None
+                tld_variants = await tld_bruteforce(
+                    target,
+                    tld_file=tld_file,
+                    concurrency=getattr(self.args, 'threads', 8) * 25,
+                    timeout=min(self.args.timeout, 5),
+                    verbose=self.verbose,
+                    quiet=self.quiet,
+                )
+                self.log(f'[+] [tld_brute] {len(tld_variants)} live TLD variant(s) found')
+                for v in sorted(tld_variants):
+                    self.log(f'    [+] {v}')
+
         # ── Live host verification + TLS SAN extraction ───────────────
         live_results: dict = {}
         if self.args.verify_live and subdomains:
@@ -389,6 +412,7 @@ class Engine:
                 timeout=self.args.timeout,
                 quiet=self.quiet,
                 concurrency=self.args.threads * 5,
+                proxy=getattr(self.args, 'proxy', None),
             )
             live_count = sum(1 for v in live_results.values() if v.get('status'))
             self.log(f'[+] Live hosts: {live_count}/{len(subdomains)}')
@@ -456,6 +480,7 @@ class Engine:
             'subdomains': subdomains,
             'live': live_results,
             'sources': source_counts,
+            'tld_variants': tld_variants,
         }
 
     # ------------------------------------------------------------------

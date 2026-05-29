@@ -9,8 +9,6 @@ Requires a Chaos API key. Sign up at: https://chaos.projectdiscovery.io/
 Add 'chaos_key' to config/api_keys.json.
 """
 
-import httpx
-
 from core.config import get_key
 from sources.base import BaseSource
 
@@ -34,7 +32,7 @@ class Chaos(BaseSource):
         subdomains: set[str] = set()
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with self._make_client() as client:
                 resp = await self._get(
                     client,
                     self._BASE_URL.format(domain=domain),
