@@ -693,17 +693,37 @@ python simplerecon.py -d target.com --sources spider --show-extras -o ndjson \
 
 Turn the flat enumeration result into a navigable network topology: a JSON graph (nodes + edges) you can pipe into other tools, and an interactive HTML page for visual triage. The graph is built **entirely from data already collected** during the run — no extra requests or scans.
 
+### Flag reference — three axes
+
+The three flags operate independently and can be combined:
+
+| Flag | Role | Output lands in | Combinable? |
+|---|---|---|---|
+| **`-o html`** | Primary output format — replaces `txt`/`json`/`csv`/`ndjson` | `stdout` or `--outfile` | One `-o` at a time |
+| **`--network-html FILE`** | Side artifact — always writes the HTML visualization to `FILE` | `FILE` (any path) | Yes — works alongside any `-o` |
+| **`--network-map`** | Injects a `"network"` block (nodes/edges) into the JSON output | Inside the JSON document | Only meaningful with `-o json`; auto-enabled by `-o html`/`--network-html` |
+
+### Concrete examples
+
 ```bash
-# Interactive HTML as primary output
+# 1) HTML only — no JSON, no txt
 python simplerecon.py -d target.com --verify-live -o html --outfile map.html
+# → map.html (interactive graph)
 
-# Enriched JSON: original fields + a "network" graph block
+# 2) JSON enriched with the graph block
 python simplerecon.py -d target.com --verify-live --network-map -o json --outfile out.json
+# → out.json: {"domain":..., "subdomains":..., "live_hosts":..., "network": {nodes, edges, stats}}
+#   (without --network-map the JSON does not include the "network" field)
 
-# HTML as a side-artifact alongside any other output format
-python simplerecon.py -d target.com --verify-live -o txt --network-html map.html
+# 3) Plain-text results + HTML map side by side
+python simplerecon.py -d target.com --verify-live -o txt --outfile out.txt --network-html map.html
+# → out.txt (flat subdomain list)  +  map.html (visualization)
 
-# Multiple targets merged into one combined graph
+# 4) Two artifacts in one run — JSON data + HTML for the browser
+python simplerecon.py -d target.com --verify-live --network-map -o json --outfile out.json --network-html map.html
+# → out.json (with network block)  +  map.html (visualization)
+
+# 5) Multiple targets merged into one combined graph
 python simplerecon.py -l targets.txt --verify-live --tld-brute -o html --outfile multi.html
 ```
 
@@ -758,6 +778,12 @@ Single self-contained file. Loads [vis-network](https://visjs.github.io/vis-netw
 - Click a node → detail panel with HTTP status, title, server header
 - Legend with per-type counts and status-color key
 - All targets from a multi-target run merged into one graph
+
+<center>
+
+![Screenshot](/assets/screenshot/img4.png)
+
+</center>
 
 ### jq recipes for the graph block
 
