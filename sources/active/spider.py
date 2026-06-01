@@ -1,8 +1,8 @@
 """
 HTML link spider (active source).
 
-Crawls the target domain by following <a href> links up to a configurable
-depth, extracting subdomain matches from every visited page.
+Crawls the target domain by following <a href> and <link href> links up to a
+configurable depth, extracting subdomain matches from every visited page.
 
 Complements js_scrape (which targets <script src> JS files) by traversing
 the full HTML link graph. Because this makes direct HTTP requests to the
@@ -13,9 +13,10 @@ import re
 from collections import deque
 from urllib.parse import urljoin, urlparse
 
+from bs4 import BeautifulSoup
+
 from sources.base import BaseSource
 
-_HREF_RE = re.compile(r'<a[^>]+href=["\']([^"\'#?][^"\']*)["\']', re.IGNORECASE)
 _BROWSER_HEADERS = {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',
@@ -24,14 +25,14 @@ _BROWSER_HEADERS = {
     'Sec-Fetch-Site': 'none',
 }
 
-_MAX_PAGES = 50
-_MAX_DEPTH = 2
+_MAX_PAGES = 60
+_MAX_DEPTH = 4
 _CONCURRENCY = 5
 
 
 class Spider(BaseSource):
     NAME = 'spider'
-    DESCRIPTION = 'Active: HTML link crawler — follows <a href> links to discover subdomains'
+    DESCRIPTION = 'Active: HTML link crawler — follows <a href> and <link href> to discover subdomains'
     API_TOKEN_IS_REQUIREMENT = False
 
     async def fetch(self, domain: str) -> set[str]:
@@ -106,7 +107,17 @@ class Spider(BaseSource):
         queue: deque,
         depth: int,
     ) -> None:
-        for href in _HREF_RE.findall(html):
+        soup = BeautifulSoup(html, 'html.parser')
+
+        hrefs: list[str] = []
+        for tag in soup.find_all('a', href=True, limit=500):
+            hrefs.append(tag['href'])
+        for tag in soup.find_all('link', href=True, limit=100):
+            hrefs.append(tag['href'])
+
+        for href in hrefs:
+            if not href or len(href) <= 3:
+                continue
             url = urljoin(base_url, href)
             parsed = urlparse(url)
             if parsed.scheme not in ('http', 'https'):

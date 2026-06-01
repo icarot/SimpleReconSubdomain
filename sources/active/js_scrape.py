@@ -1,9 +1,10 @@
 """
 JavaScript link extraction (active source).
 
-Fetches the root domain's HTML page, discovers all linked .js files,
-downloads each script, and applies a subdomain regex — similar to
-the LinkFinder technique used by BugBounty hunters.
+Fetches the root domain's HTML page, discovers all linked .js files via
+BeautifulSoup (<script src> and <link rel=preload as=script>), downloads
+each script, extracts subdomains via regex, and follows sourcemap references
+(//# sourceMappingURL or X-SourceMap header) to also mine .map files.
 
 Because this makes direct HTTP requests to the target, it lives in
 sources/active/.
@@ -12,9 +13,9 @@ import asyncio
 import re
 from urllib.parse import urljoin, urlparse
 
-from sources.base import BaseSource
+from bs4 import BeautifulSoup
 
-_JS_SRC_RE = re.compile(r'<script[^>]+src=["\']([^"\']+\.js[^"\']*)["\']', re.IGNORECASE)
+from sources.base import BaseSource
 
 _BROWSER_HEADERS = {
     'User-Agent': (
@@ -36,13 +37,19 @@ _JS_HEADERS = {
     'Sec-Fetch-Mode': 'no-cors',
 }
 
-# Max JS files to download per domain (avoid unbounded crawls)
+# Max JS / .map files to download per domain (avoid unbounded crawls)
 _MAX_JS_FILES = 30
+_MAX_MAP_FILES = 20
+
+# Matches: //# sourceMappingURL=<path>  or  //@ sourceMappingURL=<path>
+_MAP_COMMENT_RE = re.compile(
+    r'//[#@]\s*sourceMappingURL=([^\s\'"]+)', re.IGNORECASE
+)
 
 
 class JsScrape(BaseSource):
     NAME = 'js_scrape'
-    DESCRIPTION = 'Active: JS link extraction — discovers subdomains hardcoded in JS bundles'
+    DESCRIPTION = 'Active: JS link extraction — discovers subdomains hardcoded in JS bundles and source maps'
     API_TOKEN_IS_REQUIREMENT = False
 
     async def fetch(self, domain: str) -> set[str]:
@@ -65,7 +72,6 @@ class JsScrape(BaseSource):
                     if resp.status_code < 500:
                         root_html = resp.text
                         base_url = str(resp.url)
-                        # Extract inline subdomains from the HTML itself
                         for m in subdomain_re.finditer(root_html):
                             subdomains.add(m.group(0).lower())
                         break
@@ -75,21 +81,56 @@ class JsScrape(BaseSource):
             if not root_html:
                 return self._filter(subdomains, domain)
 
-            # ── Step 2: collect JS URLs ───────────────────────────────
-            js_urls: list[str] = []
-            for src in _JS_SRC_RE.findall(root_html):
-                js_url = urljoin(base_url, src)
-                parsed = urlparse(js_url)
-                # Only fetch JS on the same host or same root domain
-                if domain in parsed.netloc:
-                    js_urls.append(js_url)
+            # ── Step 2: collect JS URLs via BeautifulSoup ─────────────
+            soup = BeautifulSoup(root_html, 'html.parser')
+            raw_js: list[str] = []
 
-            js_urls = list(dict.fromkeys(js_urls))[:_MAX_JS_FILES]
+            for tag in soup.find_all('script', src=True):
+                src = tag.get('src', '')
+                if src:
+                    raw_js.append(src)
+
+            for tag in soup.find_all('link', href=True):
+                rel = ' '.join(tag.get('rel', []))
+                as_attr = tag.get('as', '')
+                href = tag.get('href', '')
+                if href and ('script' in as_attr or 'modulepreload' in rel):
+                    raw_js.append(href)
+
+            js_urls: list[str] = []
+            seen: set[str] = set()
+            for src in raw_js:
+                url = urljoin(base_url, src)
+                parsed = urlparse(url)
+                if parsed.scheme not in ('http', 'https'):
+                    continue
+                if domain not in parsed.netloc:
+                    continue
+                if url not in seen:
+                    seen.add(url)
+                    js_urls.append(url)
+
+            js_urls = js_urls[:_MAX_JS_FILES]
             if not js_urls:
                 return self._filter(subdomains, domain)
 
-            # ── Step 3: download JS and extract subdomains ────────────
+            # ── Step 3: download JS, extract subdomains + map refs ────
+            map_urls: list[str] = []
+            map_seen: set[str] = set()
             semaphore = asyncio.Semaphore(5)
+
+            def _collect_map(js_url: str, body: str, headers: dict) -> None:
+                # Header-based sourcemap reference
+                map_ref = headers.get('x-sourcemap') or headers.get('sourcemap', '')
+                if not map_ref:
+                    # Comment-based sourcemap reference (last match wins)
+                    matches = _MAP_COMMENT_RE.findall(body)
+                    map_ref = matches[-1] if matches else ''
+                if map_ref and not map_ref.startswith('data:'):
+                    map_url = urljoin(js_url, map_ref)
+                    if map_url not in map_seen:
+                        map_seen.add(map_url)
+                        map_urls.append(map_url)
 
             async def fetch_js(url: str) -> None:
                 async with semaphore:
@@ -99,11 +140,30 @@ class JsScrape(BaseSource):
                             timeout=self.timeout,
                         )
                         if js_resp.status_code == 200:
-                            for m in subdomain_re.finditer(js_resp.text):
+                            body = js_resp.text
+                            for m in subdomain_re.finditer(body):
                                 subdomains.add(m.group(0).lower())
+                            _collect_map(url, body, dict(js_resp.headers))
                     except Exception:
                         pass
 
             await asyncio.gather(*[fetch_js(u) for u in js_urls])
+
+            # ── Step 4: download .map files and extract subdomains ────
+            async def fetch_map(url: str) -> None:
+                async with semaphore:
+                    try:
+                        map_resp = await asyncio.wait_for(
+                            client.get(url, headers=_JS_HEADERS),
+                            timeout=self.timeout,
+                        )
+                        if map_resp.status_code == 200:
+                            for m in subdomain_re.finditer(map_resp.text):
+                                subdomains.add(m.group(0).lower())
+                    except Exception:
+                        pass
+
+            if map_urls:
+                await asyncio.gather(*[fetch_map(u) for u in map_urls[:_MAX_MAP_FILES]])
 
         return self._filter(subdomains, domain)
