@@ -37,11 +37,11 @@ _JS_HEADERS = {
     'Sec-Fetch-Mode': 'no-cors',
 }
 
-_MAX_PAGES     = 50
-_MAX_DEPTH     = 2
+_MAX_PAGES     = 100
+_MAX_DEPTH     = 3
 _CONCURRENCY   = 5
-_MAX_JS_FILES  = 30
-_MAX_MAP_FILES = 20
+_MAX_JS_FILES  = 40
+_MAX_MAP_FILES = 30
 
 _MAP_COMMENT_RE = re.compile(
     r'//[#@]\s*sourceMappingURL=([^\s\'"]+)', re.IGNORECASE
@@ -65,7 +65,8 @@ class Spider(BaseSource):
 
         # BFS state
         page_queue: deque[tuple[str, int]] = deque()
-        visited: set[str] = set()
+        visited: set[str] = set()   # dedup — prevents the same URL being enqueued twice
+        fetched: int = 0            # counts actually completed HTTP requests
 
         # JS collection (populated during BFS)
         js_urls: list[str] = []
@@ -96,12 +97,14 @@ class Spider(BaseSource):
             semaphore = asyncio.Semaphore(_CONCURRENCY)
 
             async def crawl(url: str, depth: int) -> None:
+                nonlocal fetched
                 async with semaphore:
                     try:
                         resp = await asyncio.wait_for(
                             client.get(url),
                             timeout=self.timeout,
                         )
+                        fetched += 1
                         if resp.status_code < 400:
                             html = resp.text
                             actual_url = str(resp.url)
@@ -114,7 +117,7 @@ class Spider(BaseSource):
                     except Exception:
                         pass
 
-            while page_queue and len(visited) <= _MAX_PAGES:
+            while page_queue and fetched < _MAX_PAGES:
                 batch: list[tuple[str, int]] = []
                 while page_queue and len(batch) < _CONCURRENCY:
                     batch.append(page_queue.popleft())
