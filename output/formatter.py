@@ -31,6 +31,10 @@ def save_output(
         live: dict = result.get('live', {})
         sources: dict = result.get('sources', {})
         tld_variants: set[str] = result.get('tld_variants', set())
+        extras: dict = result.get('extras', {})
+        extra_hosts: set[str] = extras.get('hosts', set())
+        extra_ips: set[str]   = extras.get('ips', set())
+        extra_urls: set[str]  = extras.get('urls', set())
         timestamp = datetime.now().isoformat()
 
         if fmt == 'json':
@@ -69,6 +73,14 @@ def save_output(
             }
             if tld_variants:
                 data['tld_variants'] = sorted(tld_variants)
+            if extra_hosts or extra_ips or extra_urls:
+                data['extras'] = {}
+                if extra_hosts:
+                    data['extras']['hosts'] = sorted(extra_hosts)
+                if extra_ips:
+                    data['extras']['ips'] = sorted(extra_ips)
+                if extra_urls:
+                    data['extras']['urls'] = sorted(extra_urls)
             segments.append(json.dumps(data, indent=2))
 
         elif fmt == 'csv':
@@ -110,6 +122,24 @@ def save_output(
                     'ips': '', 'cloud': '',
                     'tls_sans': '', 'takeover': '', 'cname': '', 'waf': '',
                 })
+            for host in sorted(extra_hosts):
+                writer.writerow({
+                    'domain': domain, 'subdomain': host, 'type': 'extra_host',
+                    'status': '', 'title': '', 'server': '',
+                    'ips': '', 'cloud': '', 'tls_sans': '', 'takeover': '', 'cname': '', 'waf': '',
+                })
+            for ip in sorted(extra_ips):
+                writer.writerow({
+                    'domain': domain, 'subdomain': ip, 'type': 'extra_ip',
+                    'status': '', 'title': '', 'server': '',
+                    'ips': '', 'cloud': '', 'tls_sans': '', 'takeover': '', 'cname': '', 'waf': '',
+                })
+            for url in sorted(extra_urls):
+                writer.writerow({
+                    'domain': domain, 'subdomain': url, 'type': 'extra_url',
+                    'status': '', 'title': '', 'server': '',
+                    'ips': '', 'cloud': '', 'tls_sans': '', 'takeover': '', 'cname': '', 'waf': '',
+                })
             segments.append(buf.getvalue())
 
         elif fmt == 'ndjson':
@@ -140,6 +170,12 @@ def save_output(
                 segments.append(json.dumps({
                     'domain': domain, 'subdomain': variant, 'type': 'tld_variant'
                 }))
+            for host in sorted(extra_hosts):
+                segments.append(json.dumps({'domain': domain, 'subdomain': host, 'type': 'extra_host'}))
+            for ip in sorted(extra_ips):
+                segments.append(json.dumps({'domain': domain, 'subdomain': ip, 'type': 'extra_ip'}))
+            for url in sorted(extra_urls):
+                segments.append(json.dumps({'domain': domain, 'subdomain': url, 'type': 'extra_url'}))
 
         else:  # txt (default)
             lines = list(sorted(subdomains))
@@ -148,6 +184,21 @@ def save_output(
                     lines.append('')
                     lines.append('# TLD variants')
                 lines.extend(sorted(tld_variants))
+            if extra_hosts:
+                if not quiet:
+                    lines.append('')
+                    lines.append('# External hosts')
+                lines.extend(sorted(extra_hosts))
+            if extra_ips:
+                if not quiet:
+                    lines.append('')
+                    lines.append('# IPs')
+                lines.extend(sorted(extra_ips))
+            if extra_urls:
+                if not quiet:
+                    lines.append('')
+                    lines.append('# URLs')
+                lines.extend(sorted(extra_urls))
             segments.append('\n'.join(lines))
 
     output = '\n'.join(segments)

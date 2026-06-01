@@ -43,6 +43,7 @@ _PARSER_DEFAULTS: dict[str, object] = {
     'recursive': False,
     'recursive_depth': 1,
     'tld_brute': None,
+    'show_extras': False,
     'proxy': None,
     'user_agent': 'SimpleReconSubdomain/2',
     'verbose': 0,

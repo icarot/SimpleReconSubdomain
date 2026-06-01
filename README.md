@@ -62,6 +62,7 @@ Twitter:  https://twitter.com/MrCl0wnLab
 - [Sources](#sources)
 - [DNS Brute-force](#dns-brute-force)
 - [TLD Brute-force](#tld-brute-force)
+- [Extras — External Hosts, IPs and URLs](#extras--external-hosts-ips-and-urls)
 - [Advanced Techniques](#advanced-techniques)
 - [Subdomain Takeover Detection](#subdomain-takeover-detection)
 - [Output Formats](#output-formats)
@@ -302,6 +303,11 @@ Brute-force:
                          Strips the current TLD, resolves {base}.{tld} for every entry in the
                          wordlist. Optional FILE overrides the default config/tlds.txt (~250 TLDs).
                          Results are stored separately as tld_variants in all output formats.
+
+Extras:
+  --show-extras          Surface elements found outside the target domain during enumeration:
+                         external hosts (from certs, code repos, APIs), IPs (from --verify-live),
+                         and crawled URLs (from spider). Shown as separate sections in all output formats.
 
 Post-processing:
   --verify-live          HTTP/HTTPS probe; also extracts TLS certificate SANs (Amass technique)
@@ -595,6 +601,85 @@ The tool strips the current TLD from the target (handling compound TLDs like `.c
 Results appear in a separate `tld_variants` field in JSON/CSV/NDJSON output and are printed to the terminal at the end of each run.
 
 The default wordlist is [config/tlds.txt](config/tlds.txt). Edit it or supply your own file with `--tld-brute FILE`.
+
+---
+
+## Extras — External Hosts, IPs and URLs
+
+`--show-extras` surfaces elements collected during enumeration that fall outside the target domain. Useful for mapping partner infrastructure, discovering related assets, and understanding the broader ecosystem of a target.
+
+```bash
+# External hosts from CT logs + GitHub + APIs
+python simplerecon.py -d target.com --sources crtsh,github --show-extras
+
+# Spider: external hosts + all crawled URLs
+python simplerecon.py -d target.com --sources spider --show-extras --no-banner
+
+# Full run: external hosts, IPs from live check, crawled URLs
+python simplerecon.py -d target.com --profile osint --verify-live --show-extras -o json --outfile out.json
+```
+
+### What gets collected
+
+| Category | Source | Examples |
+|---|---|---|
+| **External hosts** | All 46 sources via `_filter()` | `partner.com`, `cdn.cloudfront.net`, `internal.corp` found in cert SANs or code |
+| **IPs** | `--verify-live` (resolved per subdomain) | `1.2.3.4`, `2606:4700::` |
+| **URLs** | Spider BFS (visited pages + JS + `.map` files) | `https://target.com/api/v1`, `https://target.com/static/app.js` |
+
+### Output per format
+
+**txt** — appended sections (headers suppressed with `--no-banner`/`--quiet`):
+```
+api.target.com
+www.target.com
+
+# External hosts
+partner.com
+cdn.fastly.net
+
+# IPs
+104.21.1.1
+172.67.1.1
+
+# URLs
+https://target.com/static/main.js
+https://target.com/static/main.js.map
+```
+
+**json** — top-level `"extras"` object:
+```json
+"extras": {
+  "hosts": ["cdn.fastly.net", "partner.com"],
+  "ips":   ["104.21.1.1", "172.67.1.1"],
+  "urls":  ["https://target.com/static/main.js"]
+}
+```
+
+**ndjson** — additional lines with `type` field:
+```json
+{"domain": "target.com", "subdomain": "partner.com",              "type": "extra_host"}
+{"domain": "target.com", "subdomain": "104.21.1.1",               "type": "extra_ip"}
+{"domain": "target.com", "subdomain": "https://target.com/api/v1","type": "extra_url"}
+```
+
+**csv** — extra rows with `type` = `extra_host`, `extra_ip`, `extra_url`.
+
+### jq recipes for extras
+
+```bash
+# External hosts only
+python simplerecon.py -d target.com --sources crtsh,censys --show-extras -o ndjson \
+  | jq 'select(.type == "extra_host") | .subdomain'
+
+# IPs (combine with verify-live)
+python simplerecon.py -d target.com --profile fast --verify-live --show-extras -o ndjson \
+  | jq 'select(.type == "extra_ip") | .subdomain'
+
+# All crawled JS files
+python simplerecon.py -d target.com --sources spider --show-extras -o ndjson \
+  | jq 'select(.type == "extra_url" and (.subdomain | endswith(".js"))) | .subdomain'
+```
 
 ---
 

@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 from abc import ABC, abstractmethod
 
 import httpx
@@ -30,6 +31,13 @@ class BaseSource(ABC):
         self._sem: asyncio.Semaphore | None = (
             asyncio.Semaphore(rate_limit) if rate_limit > 0 else None
         )
+        # Out-of-scope elements found during fetch(); populated by _filter()
+        # and by active sources that collect URLs/IPs.
+        self.extras: dict[str, set] = {
+            'hosts': set(),
+            'ips':   set(),
+            'urls':  set(),
+        }
 
     def _make_client(self, **kwargs) -> httpx.AsyncClient:
         """
@@ -82,12 +90,25 @@ class BaseSource(ABC):
         """Fetch subdomains for *domain*. Must always return a set (never raises)."""
 
     def _filter(self, subdomains: set, domain: str) -> set[str]:
-        """Keep only entries that are (sub)domains of *domain*."""
+        """Keep only entries that are (sub)domains of *domain*.
+
+        Discarded items that look like valid hostnames or IPs are saved
+        in self.extras so callers can optionally surface them.
+        """
         result: set[str] = set()
         for sub in subdomains:
             if not sub:
                 continue
             sub = sub.strip().lower().lstrip('*.')
-            if sub and (sub == domain or sub.endswith(f'.{domain}')):
+            if not sub:
+                continue
+            if sub == domain or sub.endswith(f'.{domain}'):
                 result.add(sub)
+            else:
+                try:
+                    ipaddress.ip_address(sub)
+                    self.extras['ips'].add(sub)
+                except ValueError:
+                    if '.' in sub and not sub.startswith('.') and len(sub) <= 253:
+                        self.extras['hosts'].add(sub)
         return result

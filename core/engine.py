@@ -213,6 +213,7 @@ class Engine:
         target: str,
         dedup: DeduplicatedSet,
         source_counts: dict,
+        extras: dict,
     ) -> None:
         try:
             found = await source.fetch(target)
@@ -222,6 +223,9 @@ class Engine:
                 self.log(f'[*] [{name}] +{len(new_items)} subdomains')
             else:
                 self.vlog(1, f'[!] [{name}] 0 new subdomains')
+            # Merge out-of-scope elements collected by this source
+            for key in extras:
+                extras[key].update(source.extras.get(key, set()))
         except Exception as exc:
             self.vlog(1, f'[x] [{name}] error: {exc}')
             source_counts[name] = 0
@@ -242,6 +246,7 @@ class Engine:
 
         dedup = DeduplicatedSet()
         source_counts: dict = {}
+        extras: dict[str, set] = {'hosts': set(), 'ips': set(), 'urls': set()}
         passive_sources, active_sources = self._select_sources()
         rate_limit: int = getattr(self.args, 'rate_limit', 0) or 0
         proxy: str | None = getattr(self.args, 'proxy', None)
@@ -261,7 +266,7 @@ class Engine:
         if not self.args.no_passive:
             self.log('[*] Running passive sources...')
             tasks = [
-                self._run_source(name, _make_source(cls), target, dedup, source_counts)
+                self._run_source(name, _make_source(cls), target, dedup, source_counts, extras)
                 for name, cls in passive_sources.items()
             ]
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -270,7 +275,7 @@ class Engine:
         if active_sources:
             self.log('[*] Running active sources...')
             active_tasks = [
-                self._run_source(name, _make_source(cls), target, dedup, source_counts)
+                self._run_source(name, _make_source(cls), target, dedup, source_counts, extras)
                 for name, cls in active_sources.items()
             ]
             await asyncio.gather(*active_tasks, return_exceptions=True)
@@ -475,12 +480,22 @@ class Engine:
 
                 subdomains = dedup.as_set()
 
+        # ── Extras: aggregate IPs from live results; remove in-scope items ──
+        if live_results:
+            for info in live_results.values():
+                extras['ips'].update(info.get('ips', []))
+        extras['hosts'] -= subdomains
+        extras['hosts'].discard(target)
+
+        show_extras = getattr(self.args, 'show_extras', False)
+
         return {
             'domain': target,
             'subdomains': subdomains,
             'live': live_results,
             'sources': source_counts,
             'tld_variants': tld_variants,
+            'extras': extras if show_extras else {},
         }
 
     # ------------------------------------------------------------------

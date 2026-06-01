@@ -167,6 +167,11 @@ class Spider(BaseSource):
             if map_urls:
                 await asyncio.gather(*[fetch_map(u) for u in map_urls[:_MAX_MAP_FILES]])
 
+            # Expose crawled URLs as extras
+            self.extras['urls'].update(visited)
+            self.extras['urls'].update(js_urls[:_MAX_JS_FILES])
+            self.extras['urls'].update(map_urls[:_MAX_MAP_FILES])
+
         return self._filter(subdomains, domain)
 
     # ── Static helpers ────────────────────────────────────────────────

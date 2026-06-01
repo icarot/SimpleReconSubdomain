@@ -204,6 +204,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    # Extras — out-of-scope elements
+    parser.add_argument(
+        '--show-extras',
+        action='store_true',
+        help=(
+            'Surface elements found during enumeration that fall outside the target domain: '
+            'external hosts (from certs, code, APIs), IPs (from --verify-live), '
+            'and crawled URLs (from spider). Shown as separate sections in all output formats.'
+        ),
+    )
+
     # TLD brute-force
     parser.add_argument(
         '--tld-brute',
