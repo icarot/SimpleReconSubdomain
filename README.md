@@ -25,10 +25,10 @@
 </center>
 
 Passive and active subdomain enumeration tool for OSINT and reconnaissance workflows.
-Built with async Python - queries **47 sources** (39 passive + 8 active) in parallel with no external shell dependencies.
+Built with async Python - queries **46 sources** (39 passive + 7 active) in parallel with no external shell dependencies.
 
 Techniques inspired by **subfinder**, **amass**, **puredns** and **subjack**:
-multi-probe wildcard detection, DNSSEC NSEC zone walking, TLS SAN extraction, SRV record mining, two-pass trusted-resolver validation, recursive enumeration, JavaScript link extraction, and subdomain-takeover fingerprinting.
+multi-probe wildcard detection, DNSSEC NSEC zone walking, TLS SAN extraction, SRV record mining, two-pass trusted-resolver validation, recursive enumeration, HTML/JS crawling with sourcemap mining, IP/cloud provider detection, and subdomain-takeover fingerprinting.
 
 ```
 Author:   MrCl0wn
@@ -85,6 +85,7 @@ pip install -r requirements.txt
 | `httpx` | Async HTTP client for all passive sources and resolver URL download |
 | `aiodns` | Async DNS resolver for brute-force and validation |
 | `dnspython` | Zone transfer (AXFR), DNS record mining, NSEC zone walking, SRV enumeration |
+| `beautifulsoup4` | HTML parsing for the `spider` active source (`<a>`, `<link>`, `<script>` extraction) |
 
 ---
 
@@ -338,7 +339,7 @@ python simplerecon.py -d target.com --profile fast
 | `stealth` | Minimal footprint - passive only, rate-limited (`rate_limit=2`) | `crtsh`, `certspotter`, `wayback`, `commoncrawl`, `robtex`, `anubisdb` |
 | `osint` | Code repos + threat intel + CT logs + asset DBs | `crtsh`, `certspotter`, `alienvault`, `virustotal`, `shodan`, `github`, `grep_app`, `threatminer`, `anubisdb`, `subdomaincenter`, `hackertarget`, `rapiddns`, `urlscan`, `bevigil`, `hunterhow`, `urlhaus`, `circl`, `bing` |
 | `code` | Code search only | `github`, `grep_app` |
-| `active` | Active techniques only | `zone_transfer`, `dns_mining`, `nsec_walk`, `srv_enum`, `js_scrape`, `ptr_sweep`, `vhost_probe` |
+| `active` | Active techniques only | `zone_transfer`, `dns_mining`, `nsec_walk`, `srv_enum`, `spider`, `ptr_sweep`, `vhost_probe` |
 | `full` | All available passive and active sources | `all` |
 
 Add or edit profiles by modifying [config/profiles.json](config/profiles.json):
@@ -409,8 +410,7 @@ Active sources **communicate directly with the target's DNS servers**. The targe
 | `dns_mining` | SPF / DMARC / MX / TXT record queries | **Moderate** - DNS queries to target NS |
 | `nsec_walk` | DNSSEC NSEC chain walking to enumerate entire zone | **High** - queries authoritative NS directly |
 | `srv_enum` | SRV record enumeration for ~70 common service prefixes | **Moderate** - DNS queries to public resolvers |
-| `js_scrape` | Fetches the target's root HTML, downloads every linked `.js` file, and regex-extracts subdomains hardcoded in JS bundles | **High** - direct HTTP requests to target |
-| `spider` | Crawls the target site following `<a href>` links (max depth 2, 50 pages), extracts subdomains from every page | **High** - direct HTTP requests to target |
+| `spider` | BFS HTML crawler (depth 2, 50 pages): follows `<a href>` and `<link href>` links; also collects `<script src>` and `<link rel=modulepreload>` JS files; mines subdomains from JS content and follows `//# sourceMappingURL` / `X-SourceMap` references to `.map` files | **High** - direct HTTP requests to target |
 | `ptr_sweep` | Reverse-DNS PTR sweep on /24 blocks containing target IPs | **Moderate** - DNS queries to public resolvers |
 | `vhost_probe` | Virtual-host brute-force via HTTP Host-header fuzzing | **High** - direct HTTP requests to target |
 
@@ -418,10 +418,10 @@ Active modules are included in `--sources all`. To run them explicitly:
 
 ```bash
 # Run only active sources
-python simplerecon.py -d target.com --no-passive --sources zone_transfer,dns_mining,nsec_walk,srv_enum,js_scrape,spider
+python simplerecon.py -d target.com --no-passive --sources zone_transfer,dns_mining,nsec_walk,srv_enum,spider
 
 # Mix passive + specific active
-python simplerecon.py -d target.com --sources crtsh,shodan,nsec_walk,srv_enum,js_scrape
+python simplerecon.py -d target.com --sources crtsh,shodan,nsec_walk,srv_enum,spider
 
 # Or just use the curated active profile
 python simplerecon.py -d target.com --profile active
@@ -483,7 +483,7 @@ python simplerecon.py --list-sources
 | `circl` | No (Optional Basic auth) | CIRCL Passive DNS - public free tier; key gives higher rate |
 | `bing` | No | Bing search - multi-template UA-rotating anti-bot scraping |
 
-### Active Sources (8)
+### Active Sources (7)
 
 | Source | Requires key | Notes |
 |---|---|---|
@@ -491,8 +491,7 @@ python simplerecon.py --list-sources
 | `dns_mining` | No | SPF / DMARC / MX record mining |
 | `nsec_walk` | No | DNSSEC NSEC zone walking |
 | `srv_enum` | No | SRV record enumeration (~70 service prefixes) |
-| `js_scrape` | No | Fetches target HTML + linked JS files, extracts subdomains via regex |
-| `spider` | No | HTML link crawler — follows `<a href>` links up to depth 2 (max 50 pages), extracts subdomains from every visited page; complements `js_scrape` |
+| `spider` | No | BFS HTML crawler + JS miner: follows `<a href>` / `<link href>` (depth 2, 50 pages), collects `<script src>` JS files, extracts subdomains from JS content, follows `.map` sourcemap references |
 | `ptr_sweep` | No | Reverse-DNS PTR sweep on /24 blocks containing target IPs |
 | `vhost_probe` | No | Virtual-host brute-force via HTTP Host-header fuzzing (130+ word built-in list) |
 
@@ -762,6 +761,8 @@ python simplerecon.py -d target.com --verify-live -o json --outfile results/targ
       "server": "nginx/1.24.0",
       "content_length": 1842,
       "url": "https://api.target.com",
+      "ips": ["104.18.22.1", "104.18.23.1"],
+      "cloud": "cloudflare",
       "tls_sans": ["api.target.com", "*.api.target.com", "cdn.target.com"],
       "cname": null,
       "waf": "cloudflare",
@@ -773,6 +774,8 @@ python simplerecon.py -d target.com --verify-live -o json --outfile results/targ
       "server": "AmazonS3",
       "content_length": 320,
       "url": "https://orphan.target.com",
+      "ips": ["52.217.33.142"],
+      "cloud": "aws",
       "tls_sans": [],
       "cname": "orphan.target.com.s3-website-us-east-1.amazonaws.com",
       "waf": null,
@@ -797,10 +800,11 @@ python simplerecon.py -d target.com --verify-live -o csv --outfile results/targe
 ```
 
 ```
-domain,subdomain,status,title,server,tls_sans,takeover,cname,waf
-target.com,api.target.com,200,API Gateway,nginx/1.24.0,api.target.com|*.api.target.com,,,cloudflare
-target.com,mail.target.com,200,Webmail,Apache/2.4,,,
-target.com,orphan.target.com,404,,AmazonS3,,cname:aws-s3,orphan.target.com.s3-website-us-east-1.amazonaws.com,
+domain,subdomain,type,status,title,server,ips,cloud,tls_sans,takeover,cname,waf
+target.com,api.target.com,subdomain,200,API Gateway,nginx/1.24.0,104.18.22.1|104.18.23.1,cloudflare,api.target.com|*.api.target.com,,,cloudflare
+target.com,mail.target.com,subdomain,200,Webmail,Apache/2.4,203.0.113.5,,,,
+target.com,orphan.target.com,subdomain,404,,AmazonS3,52.217.33.142,aws,,cname:aws-s3,orphan.target.com.s3-website-us-east-1.amazonaws.com,
+target.com,target.net,tld_variant,,,,,,,,,,
 ```
 
 ### NDJSON
@@ -813,9 +817,10 @@ python simplerecon.py -d target.com --verify-live -o ndjson --outfile results/ta
 ```
 
 ```json
-{"domain": "target.com", "subdomain": "api.target.com", "status": 200, "title": "API Gateway", "server": "nginx/1.24.0", "waf": "cloudflare"}
-{"domain": "target.com", "subdomain": "orphan.target.com", "status": 404, "server": "AmazonS3", "cname": "orphan.target.com.s3-website-us-east-1.amazonaws.com", "takeover": "cname:aws-s3"}
-{"domain": "target.com", "subdomain": "dev.target.com"}
+{"domain": "target.com", "subdomain": "api.target.com", "type": "subdomain", "status": 200, "title": "API Gateway", "server": "nginx/1.24.0", "ips": ["104.18.22.1"], "cloud": "cloudflare", "waf": "cloudflare"}
+{"domain": "target.com", "subdomain": "orphan.target.com", "type": "subdomain", "status": 404, "server": "AmazonS3", "ips": ["52.217.33.142"], "cloud": "aws", "cname": "orphan.target.com.s3-website-us-east-1.amazonaws.com", "takeover": "cname:aws-s3"}
+{"domain": "target.com", "subdomain": "dev.target.com", "type": "subdomain"}
+{"domain": "target.com", "subdomain": "target.net", "type": "tld_variant"}
 ```
 
 **jq examples:**
@@ -844,9 +849,31 @@ python simplerecon.py -d target.com -o txt --outfile results/target.txt
 
 ## Advanced Usage
 
+### IP and Cloud Provider Detection
+
+When `--verify-live` is enabled, each live host is also resolved to its IP addresses and the cloud provider is fingerprinted — both fields appear in all output formats.
+
+```bash
+python simplerecon.py -d target.com --verify-live -o json --outfile out.json
+```
+
+Detection order:
+1. **CNAME chain** — matched against known provider suffixes (`*.amazonaws.com`, `*.azurewebsites.net`, `*.run.app`, etc.)
+2. **IP CIDR ranges** — IP addresses matched against published ranges for AWS, Azure, GCP, Cloudflare, Fastly
+
+Detected providers: `aws`, `azure`, `gcp`, `cloudflare`, `fastly`, `github`, `heroku`, `netlify`, `vercel`, `digitalocean`
+
+```bash
+# jq — show IPs and cloud per live host
+jq '.live_hosts | to_entries[] | {host: .key, ips: .value.ips, cloud: .value.cloud}' out.json
+
+# ndjson — filter only AWS-hosted subdomains
+python simplerecon.py -d target.com --verify-live -o ndjson | jq 'select(.cloud == "aws")'
+```
+
 ### Proxy support
 
-Route all HTTP source requests through a proxy (Burp, mitmproxy, SOCKS5):
+Route **all** HTTP requests (passive sources, active sources, `--verify-live`) through a proxy (Burp, mitmproxy, SOCKS5):
 
 ```bash
 # HTTP/S proxy (e.g. Burp Suite)
@@ -961,7 +988,6 @@ The class name must be the **title-cased filename** (e.g. `myservice.py` → cla
 
 ```python
 # sources/passive/myservice.py
-import httpx
 from sources.base import BaseSource
 from core.config import get_key
 
@@ -977,7 +1003,8 @@ class Myservice(BaseSource):
             return set()
 
         subdomains: set[str] = set()
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
+        headers = {'Authorization': f'Bearer {api_key}'}
+        async with self._make_client(headers=headers) as client:
             resp = await self._get(client, f'https://api.myservice.com/subdomains/{domain}')
             if resp.status_code == 200:
                 for entry in resp.json().get('data', []):
