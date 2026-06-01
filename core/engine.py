@@ -523,4 +523,6 @@ class Engine:
             fmt=self.args.output,
             outfile=getattr(self.args, 'outfile', None),
             quiet=self.quiet,
+            network_map=getattr(self.args, 'network_map', False),
+            network_html_file=getattr(self.args, 'network_html', None),
         )

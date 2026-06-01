@@ -44,6 +44,8 @@ _PARSER_DEFAULTS: dict[str, object] = {
     'recursive_depth': 1,
     'tld_brute': None,
     'show_extras': False,
+    'network_map': False,
+    'network_html': None,
     'proxy': None,
     'user_agent': 'SimpleReconSubdomain/2',
     'verbose': 0,

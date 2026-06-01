@@ -63,6 +63,7 @@ Twitter:  https://twitter.com/MrCl0wnLab
 - [DNS Brute-force](#dns-brute-force)
 - [TLD Brute-force](#tld-brute-force)
 - [Extras — External Hosts, IPs and URLs](#extras--external-hosts-ips-and-urls)
+- [Network Mapping — Graph JSON and HTML visualization](#network-mapping--graph-json-and-html-visualization)
 - [Advanced Techniques](#advanced-techniques)
 - [Subdomain Takeover Detection](#subdomain-takeover-detection)
 - [Output Formats](#output-formats)
@@ -256,10 +257,15 @@ Target:
   --stdin                Read domains from stdin (one per line); enables pipe-friendly use
 
 Output:
-  -o {txt,json,csv,ndjson}
+  -o {txt,json,csv,ndjson,html}
                          Output format (default: txt).
                          ndjson = one compact JSON line per subdomain - ideal for jq piping
+                         html   = interactive network-map page (vis-network via CDN)
   --outfile FILE         Write output to file
+  --network-map          Include network graph (nodes/edges) in JSON output.
+                         Auto-enabled when -o html or --network-html is used.
+  --network-html FILE    Write an HTML network-map visualization to FILE alongside the
+                         main output. Combine with any -o format.
 
 Performance:
   -t N                   Thread multiplier for brute-force concurrency (default: 8)
@@ -683,6 +689,95 @@ python simplerecon.py -d target.com --sources spider --show-extras -o ndjson \
 
 ---
 
+## Network Mapping — Graph JSON and HTML visualization
+
+Turn the flat enumeration result into a navigable network topology: a JSON graph (nodes + edges) you can pipe into other tools, and an interactive HTML page for visual triage. The graph is built **entirely from data already collected** during the run — no extra requests or scans.
+
+```bash
+# Interactive HTML as primary output
+python simplerecon.py -d target.com --verify-live -o html --outfile map.html
+
+# Enriched JSON: original fields + a "network" graph block
+python simplerecon.py -d target.com --verify-live --network-map -o json --outfile out.json
+
+# HTML as a side-artifact alongside any other output format
+python simplerecon.py -d target.com --verify-live -o txt --network-html map.html
+
+# Multiple targets merged into one combined graph
+python simplerecon.py -l targets.txt --verify-live --tld-brute -o html --outfile multi.html
+```
+
+### Graph model
+
+| Node type | Built from | Notes |
+|---|---|---|
+| `domain` | scan target | one per target |
+| `subdomain` | `result.subdomains` | colored by `live.status` (2xx/3xx/4xx/5xx/none) |
+| `ip` | `live[sub].ips` (needs `--verify-live`) | shared across subdomains that share an IP |
+| `cloud` | `live[sub].cloud` | one node per provider (AWS / Cloudflare / GCP / …) |
+| `cname` | `live[sub].cname` | only when CNAME points **outside** the target zone |
+| `tld_variant` | `result.tld_variants` (needs `--tld-brute`) | linked back to the root domain |
+
+| Edge relation | Direction |
+|---|---|
+| `has_subdomain` | `domain → subdomain` |
+| `resolves_to` | `subdomain → ip` |
+| `hosted_on` | `subdomain → cloud` |
+| `cname_to` | `subdomain → cname` |
+| `tld_variant_of` | `tld_variant → domain` |
+
+### JSON shape (with `--network-map`)
+
+```json
+{
+  "domain": "target.com",
+  "subdomains": [...],
+  "live_hosts": { ... },
+  "network": {
+    "nodes": [
+      {"id": "target.com",     "type": "domain",    "label": "target.com", "color": "#1976d2"},
+      {"id": "api.target.com", "type": "subdomain", "label": "api",        "color": "#4caf50", "status": 200},
+      {"id": "104.18.22.1",    "type": "ip",        "label": "104.18.22.1","color": "#00897b"},
+      {"id": "cloud:cloudflare","type": "cloud",    "label": "CLOUDFLARE", "color": "#fbc02d"}
+    ],
+    "edges": [
+      {"from": "target.com",     "to": "api.target.com", "relation": "has_subdomain"},
+      {"from": "api.target.com", "to": "104.18.22.1",    "relation": "resolves_to"},
+      {"from": "api.target.com", "to": "cloud:cloudflare","relation": "hosted_on"}
+    ],
+    "stats": {"domains": 1, "subdomains": 42, "ips": 18, "clouds": 3, "cnames": 5, "tld_variants": 2, "edges": 71}
+  }
+}
+```
+
+### HTML viewer
+
+Single self-contained file. Loads [vis-network](https://visjs.github.io/vis-network/) `9.1.9` from `unpkg.com` (CDN — requires internet when opened). Features:
+
+- Force-directed layout with zoom, pan, navigation buttons, keyboard controls
+- Click a node → detail panel with HTTP status, title, server header
+- Legend with per-type counts and status-color key
+- All targets from a multi-target run merged into one graph
+
+### jq recipes for the graph block
+
+```bash
+# Top providers across the surface
+jq '.network.nodes[] | select(.type == "cloud") | .label' out.json | sort | uniq -c
+
+# Subdomains pointing at a specific IP
+jq -r --arg ip 104.18.22.1 \
+  '.network.edges[] | select(.relation == "resolves_to" and .to == $ip) | .from' out.json
+
+# CNAMEs to external services (potential third-party dependencies)
+jq -r '.network.nodes[] | select(.type == "cname") | .label' out.json
+
+# Quick summary
+jq '.network.stats' out.json
+```
+
+---
+
 ## Advanced Techniques
 
 ### Multi-probe Wildcard Detection (PureDNS)
@@ -929,6 +1024,14 @@ python simplerecon.py -d target.com -o ndjson | jq -r '.subdomain'
 ```bash
 python simplerecon.py -d target.com -o txt --outfile results/target.txt
 ```
+
+### HTML — Interactive network map
+
+```bash
+python simplerecon.py -d target.com --verify-live -o html --outfile results/target.html
+```
+
+Generates a self-contained HTML page that renders the discovered topology as an interactive graph (nodes: domain / subdomain / IP / cloud / CNAME / TLD variant — edges: `has_subdomain`, `resolves_to`, `hosted_on`, `cname_to`, `tld_variant_of`). Loads [vis-network](https://visjs.github.io/vis-network/) from a CDN, so it needs internet access when opened. Subdomain nodes are colored by HTTP status (green 2xx, orange 3xx, red 4xx, purple 5xx, gray unreachable). See [Network Mapping](#network-mapping--graph-json-and-html-visualization) for details.
 
 ---
 

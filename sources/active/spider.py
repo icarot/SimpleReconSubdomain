@@ -16,12 +16,15 @@ Because this makes direct HTTP requests to the target it lives in sources/active
 """
 import asyncio
 import re
+import warnings
 from collections import deque
 from urllib.parse import urljoin, urlparse
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 
 from sources.base import BaseSource
+
+warnings.filterwarnings('ignore', category=XMLParsedAsHTMLWarning)
 
 _BROWSER_HEADERS = {
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',

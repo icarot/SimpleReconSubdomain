@@ -6,6 +6,8 @@ from datetime import datetime
 from typing import Optional
 
 import core.colors as colors
+from output.graph import build_network_graph
+from output.html_renderer import render_html
 
 
 def save_output(
@@ -13,6 +15,8 @@ def save_output(
     fmt: str = 'txt',
     outfile: Optional[str] = None,
     quiet: bool = False,
+    network_map: bool = False,
+    network_html_file: Optional[str] = None,
 ) -> None:
     """
     Serialize *results* to the requested format and write to *outfile* or stdout.
@@ -21,8 +25,31 @@ def save_output(
         domain, subdomains (set), live (dict), sources (dict),
         tld_variants (set, optional)
 
-    Formats: txt, json, csv, ndjson
+    Formats: txt, json, csv, ndjson, html
+
+    When *network_map* is True (or fmt == 'html'), each JSON record also carries
+    a 'network' field with nodes/edges. When *network_html_file* is given, an
+    HTML visualization is written there regardless of *fmt*.
     """
+    # html primary output: render and short-circuit; the side artifact
+    # (network_html_file) still runs at the bottom if also set.
+    if fmt == 'html':
+        html_out = render_html(results)
+        if outfile:
+            try:
+                with open(outfile, 'w') as fh:
+                    fh.write(html_out)
+                if not quiet:
+                    print(colors.format_msg(f'\n[+] HTML network map saved to: {outfile}'))
+            except OSError as exc:
+                print(colors.format_msg(f'[!] Could not write to {outfile}: {exc}'), file=sys.stderr)
+        else:
+            print(html_out)
+        if network_html_file and network_html_file != outfile:
+            _write_html(results, network_html_file, quiet)
+        return
+
+    include_network = network_map or bool(network_html_file)
     segments: list[str] = []
 
     for result in results:
@@ -81,6 +108,8 @@ def save_output(
                     data['extras']['ips'] = sorted(extra_ips)
                 if extra_urls:
                     data['extras']['urls'] = sorted(extra_urls)
+            if include_network:
+                data['network'] = build_network_graph(result)
             segments.append(json.dumps(data, indent=2))
 
         elif fmt == 'csv':
@@ -216,3 +245,16 @@ def save_output(
     else:
         if output:
             print('\n' + output)
+
+    if network_html_file:
+        _write_html(results, network_html_file, quiet)
+
+
+def _write_html(results: list[dict], path: str, quiet: bool) -> None:
+    try:
+        with open(path, 'w') as fh:
+            fh.write(render_html(results))
+        if not quiet:
+            print(colors.format_msg(f'[+] HTML network map saved to: {path}'))
+    except OSError as exc:
+        print(colors.format_msg(f'[!] Could not write to {path}: {exc}'), file=sys.stderr)

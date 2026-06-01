@@ -84,11 +84,23 @@ def build_parser() -> argparse.ArgumentParser:
     # Output
     parser.add_argument(
         '-o', '--output',
-        choices=['txt', 'json', 'csv', 'ndjson'],
+        choices=['txt', 'json', 'csv', 'ndjson', 'html'],
         default='txt',
-        help='Output format (default: txt). ndjson = one JSON line per subdomain, ideal for piping',
+        help='Output format (default: txt). ndjson = one JSON line per subdomain; html = interactive network-map page',
     )
     parser.add_argument('--outfile', metavar='FILE', help='Write output to file')
+    parser.add_argument(
+        '--network-map',
+        action='store_true',
+        help='Include network graph (nodes/edges) in JSON output. '
+             'Auto-enabled when -o html or --network-html is used.',
+    )
+    parser.add_argument(
+        '--network-html',
+        metavar='FILE',
+        help='Write an HTML network-map visualization to FILE alongside the main output. '
+             'Combine with any -o format.',
+    )
 
     # Performance
     parser.add_argument(
