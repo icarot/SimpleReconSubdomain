@@ -46,6 +46,7 @@ _PARSER_DEFAULTS: dict[str, object] = {
     'show_extras': False,
     'network_map': False,
     'network_html': None,
+    'learn_words': False,
     'proxy': None,
     'user_agent': 'SimpleReconSubdomain/2',
     'verbose': 0,

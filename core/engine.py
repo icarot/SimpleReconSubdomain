@@ -280,8 +280,23 @@ class Engine:
             ]
             await asyncio.gather(*active_tasks, return_exceptions=True)
 
+        # ── Wordlist learner (derives candidates from discovered names) ─
+        learned_candidates: set[str] = set()
+        if getattr(self.args, 'learn_words', False) and dedup.as_set():
+            try:
+                from bruteforce.wordlist_learner import learn
+                learned_labels = learn(dedup.as_set(), target)
+                learned_candidates = {f'{w}.{target}' for w in learned_labels}
+                if learned_candidates:
+                    self.log(
+                        f'[*] [wordlist_learner] {len(learned_labels)} candidate(s) '
+                        f'derived from {len(dedup)} discovered name(s)'
+                    )
+            except Exception as exc:
+                self.log(f'[!] [wordlist_learner] error: {exc}')
+
         # ── DNS brute-force ───────────────────────────────────────────
-        if self.args.brute:
+        if self.args.brute or learned_candidates:
             try:
                 import aiodns
                 from bruteforce.resolver import dns_bruteforce
@@ -289,6 +304,7 @@ class Engine:
             except ImportError:
                 print(colors.format_msg('[!] aiodns is required for brute-force. Run: pip install aiodns'))
                 self.args.brute = None
+                learned_candidates = set()
             else:
                 self.log('[*] Starting DNS brute-force...')
                 resolvers = (
@@ -324,9 +340,30 @@ class Engine:
                 if is_wildcard:
                     self.log(f'[!] Wildcard DNS detected on {target} - filtering false positives')
 
+                # Merge wordlist file + learned candidates into a single set
+                brute_words: set[str] | None = None
+                brute_wordlist: str | None = None
+                if learned_candidates and self.args.brute:
+                    # Load wordlist file and merge with learned candidates
+                    try:
+                        with open(self.args.brute, 'r', errors='ignore') as _fh:
+                            file_words = {
+                                l.strip() for l in _fh
+                                if l.strip() and not l.startswith('#')
+                            }
+                        brute_words = file_words | learned_candidates
+                    except Exception:
+                        brute_words = learned_candidates
+                        brute_wordlist = self.args.brute
+                elif learned_candidates:
+                    brute_words = learned_candidates
+                else:
+                    brute_wordlist = self.args.brute
+
                 brute_found = await dns_bruteforce(
                     domain=target,
-                    wordlist=self.args.brute,
+                    wordlist=brute_wordlist,
+                    words=brute_words,
                     resolvers=resolvers or None,
                     concurrency=self.args.threads * 25,
                     verbose=self.verbose,

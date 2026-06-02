@@ -8,6 +8,7 @@ from typing import Optional
 import core.colors as colors
 from output.graph import build_network_graph
 from output.html_renderer import render_html
+from output.report import render_markdown
 
 
 def save_output(
@@ -25,12 +26,30 @@ def save_output(
         domain, subdomains (set), live (dict), sources (dict),
         tld_variants (set, optional)
 
-    Formats: txt, json, csv, ndjson, html
+    Formats: txt, json, csv, ndjson, html, markdown
 
     When *network_map* is True (or fmt == 'html'), each JSON record also carries
     a 'network' field with nodes/edges. When *network_html_file* is given, an
     HTML visualization is written there regardless of *fmt*.
     """
+    # markdown primary output
+    if fmt == 'markdown':
+        md = render_markdown(results)
+        if outfile:
+            try:
+                with open(outfile, 'w') as fh:
+                    fh.write(md)
+                    fh.write('\n')
+                if not quiet:
+                    print(colors.format_msg(f'\n[+] Markdown report saved to: {outfile}'))
+            except OSError as exc:
+                print(colors.format_msg(f'[!] Could not write to {outfile}: {exc}'), file=sys.stderr)
+        else:
+            print('\n' + md)
+        if network_html_file:
+            _write_html(results, network_html_file, quiet)
+        return
+
     # html primary output: render and short-circuit; the side artifact
     # (network_html_file) still runs at the bottom if also set.
     if fmt == 'html':
@@ -88,7 +107,21 @@ def save_output(
                         entry['cname'] = info['cname']
                     if info.get('waf'):
                         entry['waf'] = info['waf']
+                    if info.get('body_hash'):
+                        entry['body_hash'] = info['body_hash']
+                    if info.get('response_ms') is not None:
+                        entry['response_ms'] = info['response_ms']
                     live_hosts[sub] = entry
+
+            # Detect hosts returning identical body content (wildcard / CDN farm)
+            _hgroups: dict[str, list[str]] = {}
+            for sub, info in live.items():
+                h = info.get('body_hash')
+                if h:
+                    _hgroups.setdefault(h, []).append(sub)
+            duplicate_bodies = {
+                h: sorted(subs) for h, subs in _hgroups.items() if len(subs) > 1
+            }
 
             data = {
                 'domain': domain,
@@ -108,6 +141,8 @@ def save_output(
                     data['extras']['ips'] = sorted(extra_ips)
                 if extra_urls:
                     data['extras']['urls'] = sorted(extra_urls)
+            if duplicate_bodies:
+                data['duplicate_bodies'] = duplicate_bodies
             if include_network:
                 data['network'] = build_network_graph(result)
             segments.append(json.dumps(data, indent=2))
@@ -121,6 +156,7 @@ def save_output(
                     'status', 'title', 'server',
                     'ips', 'cloud',
                     'tls_sans', 'takeover', 'cname', 'waf',
+                    'body_hash', 'response_ms',
                 ],
             )
             writer.writeheader()
@@ -141,6 +177,8 @@ def save_output(
                     'takeover': live_info.get('takeover', ''),
                     'cname': live_info.get('cname', ''),
                     'waf': live_info.get('waf', ''),
+                    'body_hash': live_info.get('body_hash', '') or '',
+                    'response_ms': live_info.get('response_ms', '') if live_info.get('response_ms') is not None else '',
                 })
             for variant in sorted(tld_variants):
                 writer.writerow({
@@ -194,6 +232,10 @@ def save_output(
                         record['cname'] = live_info['cname']
                     if live_info.get('waf'):
                         record['waf'] = live_info['waf']
+                    if live_info.get('body_hash'):
+                        record['body_hash'] = live_info['body_hash']
+                    if live_info.get('response_ms') is not None:
+                        record['response_ms'] = live_info['response_ms']
                 segments.append(json.dumps(record))
             for variant in sorted(tld_variants):
                 segments.append(json.dumps({

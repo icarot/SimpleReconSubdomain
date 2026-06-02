@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/MrCl0wnLab/SimpleReconSubdomain/blob/main/LICENSE"><img src="https://img.shields.io/github/license/MrCl0wnLab/SimpleReconSubdomain?color=blue"></a>
+  <a href="https://github.com/MrCl0wnLab/SimpleReconSubdomain/blob/master/LICENSE"><img src="https://img.shields.io/github/license/MrCl0wnLab/SimpleReconSubdomain?color=blue"></a>
   <a href="https://github.com/MrCl0wnLab/SimpleReconSubdomain/graphs/contributors"><img src="https://img.shields.io/github/contributors-anon/MrCl0wnLab/SimpleReconSubdomain"></a>
   <a href="https://github.com/MrCl0wnLab/SimpleReconSubdomain/issues"><img src="https://img.shields.io/github/issues-raw/MrCl0wnLab/SimpleReconSubdomain"></a>
   <a href="https://github.com/MrCl0wnLab/SimpleReconSubdomain/network/members"><img src="https://img.shields.io/github/forks/MrCl0wnLab/SimpleReconSubdomain"></a>
@@ -25,10 +25,10 @@
 </center>
 
 Passive and active subdomain enumeration tool for OSINT and reconnaissance workflows.
-Built with async Python - queries **46 sources** (39 passive + 7 active) in parallel with no external shell dependencies.
+Built with async Python - queries **50 sources** (39 passive + 11 active) in parallel with no external shell dependencies.
 
 Techniques inspired by **subfinder**, **amass**, **puredns** and **subjack**:
-multi-probe wildcard detection, DNSSEC NSEC zone walking, TLS SAN extraction, SRV record mining, two-pass trusted-resolver validation, recursive enumeration, HTML/JS crawling with sourcemap mining, IP/cloud provider detection, and subdomain-takeover fingerprinting.
+multi-probe wildcard detection, DNSSEC NSEC zone walking, TLS SAN extraction, SRV record mining, two-pass trusted-resolver validation, recursive enumeration, HTML/JS crawling with sourcemap mining, CAA record mining, robots.txt/sitemap harvesting, secondary NS brute-force, ASN-based PTR sweep, IP/cloud provider detection, wordlist learning from discovered names, and subdomain-takeover fingerprinting.
 
 ```
 Author:   MrCl0wn
@@ -61,9 +61,11 @@ Twitter:  https://twitter.com/MrCl0wnLab
 - [Passive vs Active Modules](#passive-vs-active-modules)
 - [Sources](#sources)
 - [DNS Brute-force](#dns-brute-force)
+- [Wordlist Learner — Pattern-derived candidates](#wordlist-learner--pattern-derived-candidates)
 - [TLD Brute-force](#tld-brute-force)
 - [Extras — External Hosts, IPs and URLs](#extras--external-hosts-ips-and-urls)
 - [Network Mapping — Graph JSON and HTML visualization](#network-mapping--graph-json-and-html-visualization)
+- [Markdown Report](#markdown-report)
 - [Advanced Techniques](#advanced-techniques)
 - [Subdomain Takeover Detection](#subdomain-takeover-detection)
 - [Output Formats](#output-formats)
@@ -257,10 +259,11 @@ Target:
   --stdin                Read domains from stdin (one per line); enables pipe-friendly use
 
 Output:
-  -o {txt,json,csv,ndjson,html}
+  -o {txt,json,csv,ndjson,html,markdown}
                          Output format (default: txt).
-                         ndjson = one compact JSON line per subdomain - ideal for jq piping
-                         html   = interactive network-map page (vis-network via CDN)
+                         ndjson   = one compact JSON line per subdomain - ideal for jq piping
+                         html     = interactive network-map page (vis-network via CDN)
+                         markdown = human-readable reconnaissance report
   --outfile FILE         Write output to file
   --network-map          Include network graph (nodes/edges) in JSON output.
                          Auto-enabled when -o html or --network-html is used.
@@ -305,6 +308,9 @@ Brute-force:
   --validate-resolvers   Re-validate results against Google/Cloudflare after brute-force
                          to eliminate DNS-poisoned false positives (PureDNS two-pass)
   --permute              Generate Altdns-style permutations from found subdomains
+  --learn-words          Derive brute-force candidates from patterns in discovered names
+                         (numeric sequences, environment families, geo variants, version bumps).
+                         Runs after passive/active gathering, feeds into --brute when combined.
   --tld-brute [FILE]     Discover live TLD variants of the target (e.g. target.net, target.io).
                          Strips the current TLD, resolves {base}.{tld} for every entry in the
                          wordlist. Optional FILE overrides the default config/tlds.txt (~250 TLDs).
@@ -351,7 +357,7 @@ python simplerecon.py -d target.com --profile fast
 | `stealth` | Minimal footprint - passive only, rate-limited (`rate_limit=2`) | `crtsh`, `certspotter`, `wayback`, `commoncrawl`, `robtex`, `anubisdb` |
 | `osint` | Code repos + threat intel + CT logs + asset DBs | `crtsh`, `certspotter`, `alienvault`, `virustotal`, `shodan`, `github`, `grep_app`, `threatminer`, `anubisdb`, `subdomaincenter`, `hackertarget`, `rapiddns`, `urlscan`, `bevigil`, `hunterhow`, `urlhaus`, `circl`, `bing` |
 | `code` | Code search only | `github`, `grep_app` |
-| `active` | Active techniques only | `zone_transfer`, `dns_mining`, `nsec_walk`, `srv_enum`, `spider`, `ptr_sweep`, `vhost_probe` |
+| `active` | Active techniques only | `zone_transfer`, `ns_brute`, `dns_mining`, `caa_enum`, `nsec_walk`, `srv_enum`, `spider`, `robots_sitemap`, `ptr_sweep`, `asn_sweep`, `vhost_probe` |
 | `full` | All available passive and active sources | `all` |
 
 Add or edit profiles by modifying [config/profiles.json](config/profiles.json):
@@ -419,11 +425,15 @@ Active sources **communicate directly with the target's DNS servers**. The targe
 | Module | What it does | Detection level |
 |---|---|---|
 | `zone_transfer` | AXFR attempt on all nameservers | **High** - connects to target NS |
+| `ns_brute` | Secondary NS discovery (SOA MNAME + common name brute-force) then AXFR/IXFR on every candidate | **High** - DNS queries to target NS |
 | `dns_mining` | SPF / DMARC / MX / TXT record queries | **Moderate** - DNS queries to target NS |
+| `caa_enum` | CAA record mining — `iodef:` field leaks internal hostnames and URLs | **Low** - single DNS query per target |
 | `nsec_walk` | DNSSEC NSEC chain walking to enumerate entire zone | **High** - queries authoritative NS directly |
 | `srv_enum` | SRV record enumeration for ~70 common service prefixes | **Moderate** - DNS queries to public resolvers |
-| `spider` | BFS HTML crawler (depth 2, 50 pages): follows `<a href>` and `<link href>` links; also collects `<script src>` and `<link rel=modulepreload>` JS files; mines subdomains from JS content and follows `//# sourceMappingURL` / `X-SourceMap` references to `.map` files | **High** - direct HTTP requests to target |
+| `spider` | BFS HTML crawler (depth 2, 100 pages): follows `<a href>` and `<link href>` links; also collects `<script src>` and `<link rel=modulepreload>` JS files; mines subdomains from JS content and follows `//# sourceMappingURL` / `X-SourceMap` references to `.map` files | **High** - direct HTTP requests to target |
+| `robots_sitemap` | Fetches `robots.txt` (extracts `Sitemap:` directives and hostnames in paths) then recursively downloads and parses `sitemap.xml` / `<sitemapindex>` — extracts all `<loc>` hostnames | **Moderate** - direct HTTP to target |
 | `ptr_sweep` | Reverse-DNS PTR sweep on /24 blocks containing target IPs | **Moderate** - DNS queries to public resolvers |
+| `asn_sweep` | Looks up the target's ASN via bgp.he.net, fetches all owned CIDR prefixes, then PTR-sweeps every IP in each block | **Moderate** - HTTP to bgp.he.net + DNS PTR queries |
 | `vhost_probe` | Virtual-host brute-force via HTTP Host-header fuzzing | **High** - direct HTTP requests to target |
 
 Active modules are included in `--sources all`. To run them explicitly:
@@ -495,16 +505,20 @@ python simplerecon.py --list-sources
 | `circl` | No (Optional Basic auth) | CIRCL Passive DNS - public free tier; key gives higher rate |
 | `bing` | No | Bing search - multi-template UA-rotating anti-bot scraping |
 
-### Active Sources (7)
+### Active Sources (11)
 
 | Source | Requires key | Notes |
 |---|---|---|
-| `zone_transfer` | No | DNS Zone Transfer (AXFR) |
+| `zone_transfer` | No | DNS Zone Transfer (AXFR) on public nameservers |
+| `ns_brute` | No | Secondary NS discovery (SOA MNAME + 16-prefix brute-force) + AXFR/IXFR on all candidates |
 | `dns_mining` | No | SPF / DMARC / MX record mining |
+| `caa_enum` | No | CAA `iodef:` field mining — leaks internal hostnames from `mailto:` and `https://` values |
 | `nsec_walk` | No | DNSSEC NSEC zone walking |
 | `srv_enum` | No | SRV record enumeration (~70 service prefixes) |
-| `spider` | No | BFS HTML crawler + JS miner: follows `<a href>` / `<link href>` (depth 2, 50 pages), collects `<script src>` JS files, extracts subdomains from JS content, follows `.map` sourcemap references |
+| `spider` | No | BFS HTML crawler + JS miner: follows `<a href>` / `<link href>` (depth 2, 100 pages), collects `<script src>` JS files, extracts subdomains from JS content, follows `.map` sourcemap references |
+| `robots_sitemap` | No | `robots.txt` directives + recursive `sitemap.xml` / `<sitemapindex>` `<loc>` hostname extraction (max 20 sitemaps, depth 2) |
 | `ptr_sweep` | No | Reverse-DNS PTR sweep on /24 blocks containing target IPs |
+| `asn_sweep` | No | Resolves target ASN via bgp.he.net → fetches all owned IPv4 prefixes (≤/20) → PTR sweep |
 | `vhost_probe` | No | Virtual-host brute-force via HTTP Host-header fuzzing (130+ word built-in list) |
 
 <center>
@@ -607,6 +621,37 @@ The tool strips the current TLD from the target (handling compound TLDs like `.c
 Results appear in a separate `tld_variants` field in JSON/CSV/NDJSON output and are printed to the terminal at the end of each run.
 
 The default wordlist is [config/tlds.txt](config/tlds.txt). Edit it or supply your own file with `--tld-brute FILE`.
+
+---
+
+## Wordlist Learner — Pattern-derived candidates
+
+`--learn-words` analyses the subdomain names already discovered (from passive and active sources) and derives targeted brute-force candidates from the patterns it finds — without any static wordlist.
+
+```bash
+# Derive candidates from passive results, then resolve them
+python simplerecon.py -d target.com --profile fast --learn-words
+
+# Combine with a traditional wordlist (merged before resolution)
+python simplerecon.py -d target.com --profile fast --learn-words --brute wordlists/top5000.txt
+
+# Full pipeline: passive → learn → brute → live-check
+python simplerecon.py -d target.com --profile osint --learn-words \
+  --brute wordlists/subdomains-top1million-5000.txt \
+  --verify-live -o json --outfile results.json
+```
+
+### What patterns are detected
+
+| Pattern | Example input | Candidates generated |
+|---------|---------------|---------------------|
+| **Numeric sequences** | `api1`, `api2` | `api3` … `api9` (fills gaps and extends runs) |
+| **Environment families** | `dev-api`, `dev-admin` | `staging-api`, `qa-api`, `prod-api`, `staging-admin` … |
+| **Geo variants** | `cdn-us`, `cdn-eu` | `cdn-br`, `cdn-uk`, `cdn-de`, `cdn-sg` … |
+| **Version bumps** | `app-v2` | `app-v1`, `app-v3` |
+| **Token combinations** | `dev`, `api`, `eu` each in ≥2 names | missing cross-product pairs: `dev-eu`, `api-eu` … |
+
+The learner returns only **new** candidates — names not already in the discovered set. When combined with `--brute`, the two word sets are merged before DNS resolution so only one brute-force pass runs.
 
 ---
 
@@ -1058,6 +1103,44 @@ python simplerecon.py -d target.com --verify-live -o html --outfile results/targ
 ```
 
 Generates a self-contained HTML page that renders the discovered topology as an interactive graph (nodes: domain / subdomain / IP / cloud / CNAME / TLD variant — edges: `has_subdomain`, `resolves_to`, `hosted_on`, `cname_to`, `tld_variant_of`). Loads [vis-network](https://visjs.github.io/vis-network/) from a CDN, so it needs internet access when opened. Subdomain nodes are colored by HTTP status (green 2xx, orange 3xx, red 4xx, purple 5xx, gray unreachable). See [Network Mapping](#network-mapping--graph-json-and-html-visualization) for details.
+
+### Markdown — Human-readable reconnaissance report
+
+```bash
+python simplerecon.py -d target.com --verify-live -o markdown --outfile report.md
+```
+
+Generates a structured Markdown document with summary metrics, tables of live hosts, takeover candidates, duplicate body hashes, all subdomains, TLD variants, source contributions, and extras — ready to paste into GitHub issues, wikis, or deliver to clients. See [Markdown Report](#markdown-report) for details.
+
+---
+
+## Markdown Report
+
+`-o markdown` produces a complete reconnaissance report as a single `.md` file.
+
+```bash
+# Markdown as primary output
+python simplerecon.py -d target.com --verify-live -o markdown --outfile report.md
+
+# Pipe to a terminal Markdown viewer
+python simplerecon.py -d target.com --verify-live -o markdown | glow -
+```
+
+### Sections included
+
+| Section | Appears when |
+|---------|-------------|
+| Header (date, sources, totals) | Always |
+| Summary metrics table | Always |
+| ⚠ Takeover Candidates | Any `takeover` detected by `--verify-live` |
+| Live Hosts table (status, title, server, cloud, WAF, ms) | `--verify-live` |
+| Duplicate Body Hashes | ≥2 hosts share the same response hash |
+| All Subdomains (code block) | Always |
+| TLD Variants | `--tld-brute` |
+| Extras (hosts, IPs, URLs) | `--show-extras` |
+| Source Contributions | Always |
+
+The `duplicate_bodies` section flags hosts that returned identical response content — a reliable signal of wildcard DNS or CDN farms that weren't caught by the wildcard filter.
 
 ---
 

@@ -10,10 +10,12 @@ SAN extraction uses Python's built-in ssl module (no extra dependencies).
 """
 
 import asyncio
+import hashlib
 import ipaddress
 import re
 import socket
 import ssl
+import time
 
 import httpx
 
@@ -342,6 +344,7 @@ async def verify_live(
                 for scheme in ('https', 'http'):
                     url = f'{scheme}://{sub}'
                     try:
+                        t_start = time.monotonic()
                         resp = await client.get(url)
                         resp_headers = dict(resp.headers)
                         body_takeover = _detect_takeover(resp.text, resp_headers)
@@ -353,6 +356,8 @@ async def verify_live(
                             'title': _extract_title(resp.text),
                             'server': resp.headers.get('server', ''),
                             'content_length': len(resp.content),
+                            'body_hash': hashlib.sha256(resp.content[:4096]).hexdigest()[:16],
+                            'response_ms': int((time.monotonic() - t_start) * 1000),
                             'tls_sans': [],
                             'takeover': body_takeover,
                             'cname': None,
@@ -401,6 +406,7 @@ async def verify_live(
                         'url': None, 'status': None, 'tls_sans': [],
                         'takeover': None, 'cname': None, 'waf': None,
                         'ips': [], 'cloud': None,
+                        'body_hash': None, 'response_ms': None,
                     }
 
         await asyncio.gather(*[check(sub) for sub in subdomains])

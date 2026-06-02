@@ -84,9 +84,10 @@ def build_parser() -> argparse.ArgumentParser:
     # Output
     parser.add_argument(
         '-o', '--output',
-        choices=['txt', 'json', 'csv', 'ndjson', 'html'],
+        choices=['txt', 'json', 'csv', 'ndjson', 'html', 'markdown'],
         default='txt',
-        help='Output format (default: txt). ndjson = one JSON line per subdomain; html = interactive network-map page',
+        help='Output format (default: txt). ndjson = one JSON line per subdomain; '
+             'html = interactive network-map page; markdown = human-readable report',
     )
     parser.add_argument('--outfile', metavar='FILE', help='Write output to file')
     parser.add_argument(
@@ -100,6 +101,15 @@ def build_parser() -> argparse.ArgumentParser:
         metavar='FILE',
         help='Write an HTML network-map visualization to FILE alongside the main output. '
              'Combine with any -o format.',
+    )
+
+    # Discovery helpers
+    parser.add_argument(
+        '--learn-words',
+        action='store_true',
+        help='Derive additional brute-force candidates from discovered subdomain patterns '
+             '(numeric sequences, environment families, geo variants, version bumps). '
+             'Runs after passive/active gathering, before --brute.',
     )
 
     # Performance

@@ -26,8 +26,8 @@
         "options": {}
     },
     "active": {
-        "description": "Active techniques only — DNS mining, zone transfer, SRV, HTML/JS crawler, PTR sweep, vhost probing",
-        "sources": ["zone_transfer", "dns_mining", "nsec_walk", "srv_enum", "spider", "ptr_sweep", "vhost_probe"],
+        "description": "Active techniques only — DNS mining, zone transfer, SRV, HTML/JS crawler, PTR sweep, vhost probing, robots/sitemap, CAA mining, NS brute-force, ASN sweep",
+        "sources": ["zone_transfer", "ns_brute", "dns_mining", "caa_enum", "nsec_walk", "srv_enum", "spider", "robots_sitemap", "ptr_sweep", "asn_sweep", "vhost_probe"],
         "options": {}
     },
     "full": {
